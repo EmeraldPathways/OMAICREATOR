@@ -57,6 +57,42 @@ export async function POST(req: Request) {
   }
 }
 
+/** Edit an existing figure while keeping its audit metadata and database row. */
+export async function PATCH(req: Request) {
+  try {
+    if (!hasDb()) {
+      return NextResponse.json({ error: "No database connected." }, { status: 400 });
+    }
+    const body = await req.json();
+    const { id, claim, value, sourceUrl, sourceTitle, verifiedBy, monthsValid } = body;
+    if (!id || !claim?.trim() || !value?.trim() || !sourceUrl?.trim() || !verifiedBy?.trim()) {
+      return NextResponse.json(
+        { error: "An edited figure needs the claim, value, source URL, and who checked it." },
+        { status: 400 }
+      );
+    }
+
+    const months = Math.min(Math.max(Number(monthsValid) || 6, 1), 24);
+    const expiresAt = new Date();
+    expiresAt.setMonth(expiresAt.getMonth() + months);
+    const sql = db();
+    await sql`
+      UPDATE verified_facts
+      SET claim = ${claim.trim()}, value = ${value.trim()}, source_url = ${sourceUrl.trim()},
+          source_title = ${sourceTitle || null}, verified_by = ${verifiedBy.trim()},
+          verified_at = CURRENT_TIMESTAMP, expires_at = ${expiresAt.toISOString()},
+          superseded = FALSE, embedding = NULL
+      WHERE id = ${Number(id)}`;
+
+    // Editing is kept synchronous and fast. The old embedding is cleared because
+    // it no longer matches, while keyword retrieval continues to use the revised row.
+    return NextResponse.json({ ok: true, id: Number(id) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Could not update the figure.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 /** Mark a figure as superseded — used when re-verifying an expired one. */
 export async function DELETE(req: Request) {
   try {
