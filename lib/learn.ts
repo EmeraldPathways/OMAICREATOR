@@ -1,4 +1,4 @@
-import { db, vectorReady, type StoredPiece, type StoredFact, type Lesson } from "./db";
+import { db, hasDb, vectorReady, type StoredPiece, type StoredFact, type Lesson } from "./db";
 import { chatJSON } from "./openai";
 
 /* ----------------------------------------------------------- embeddings -- */
@@ -26,6 +26,11 @@ export async function embed(text: string, apiKey: string): Promise<number[] | nu
 
 function toVectorLiteral(v: number[]): string {
   return `[${v.join(",")}]`;
+}
+
+function safeDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "date recorded in database" : date.toISOString().slice(0, 10);
 }
 
 /* ------------------------------------------------------------ retrieval -- */
@@ -66,7 +71,7 @@ export async function retrieve(
   brief: { channel: string; profession: string; topic: string },
   apiKey: string
 ): Promise<LearnedContext> {
-  if (!process.env.DATABASE_URL) return EMPTY;
+  if (!hasDb()) return EMPTY;
 
   try {
     const sql = db();
@@ -178,7 +183,7 @@ here and not in today's sources, do not guess it:
 ${ctx.facts
   .map(
     (f) =>
-      `- [V${f.id}] ${f.claim}: ${f.value}\n     Source: ${f.source_url}\n     Verified ${new Date(f.verified_at).toISOString().slice(0, 10)}, expires ${new Date(f.expires_at).toISOString().slice(0, 10)}`
+      `- [V${f.id}] ${f.claim}: ${f.value}\n     Source: ${f.source_url}\n     Verified ${safeDate(f.verified_at)}, expires ${safeDate(f.expires_at)}`
   )
   .join("\n")}`);
   }
