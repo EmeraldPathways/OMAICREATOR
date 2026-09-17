@@ -21,6 +21,11 @@ const SEEDS: Record<string, string[]> = {
   pharmacist: ["Pharmacy ownership and succession", "Staff pension obligations for owners", "Contractor income structure"],
 };
 
+const safeDate = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "date recorded in database" : date.toISOString().slice(0, 10);
+};
+
 export default function Knowledge() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [connected, setConnected] = useState(true);
@@ -41,6 +46,7 @@ export default function Knowledge() {
       const j = await res.json();
       setConnected(j.connected !== false);
       setEntries(j.entries || []);
+      if (j.error) setMsg(j.error);
     } finally { setBusy(false); }
   }
   useEffect(() => { load(); }, []);
@@ -161,7 +167,7 @@ export default function Knowledge() {
           <div className="claim-foot">
             <span className="basis">K{e.id}</span>
             <span>
-              {e.added_by} · {new Date(e.added_at).toISOString().slice(0, 10)}
+              {e.added_by} · {safeDate(e.added_at)}
               {e.expires_at ? ` · review by ${String(e.expires_at).slice(0, 10)}` : ""}
               {e.source_url ? " · " : ""}
               {e.source_url && <a href={e.source_url} target="_blank" rel="noreferrer">source</a>}
