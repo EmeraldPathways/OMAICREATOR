@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { SCHEMA_SQL } from "@/lib/schemaSql";
+import { FACTS } from "@/lib/facts";
 
 type SqlTag = (strings: TemplateStringsArray, ...values: unknown[]) => Promise<Record<string, unknown>[]>;
 
@@ -36,6 +37,9 @@ export async function initSchema(): Promise<{ vector: boolean; notes: string[] }
     const safeStatement = statement.replace(/^CREATE TABLE /, "CREATE TABLE IF NOT EXISTS ");
     return env.DB.prepare(sqliteQuery(safeStatement));
   }));
+  await env.DB.batch(FACTS.map((fact) => env.DB.prepare(
+    "INSERT OR IGNORE INTO brand_facts (fact_key, label, value, status, note) VALUES (?, ?, ?, ?, ?)"
+  ).bind(fact.id, fact.label, fact.value, fact.status, fact.note || null)));
   return { vector: false, notes: ["Hosted persistence uses Cloudflare D1. The tables are now ready."] };
 }
 
