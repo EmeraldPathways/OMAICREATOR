@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Library from "@/components/Library";
 import Queue from "@/components/Queue";
@@ -11,11 +11,19 @@ import Interview from "@/components/Interview";
 import VoiceBank from "@/components/VoiceBank";
 import { CAREER_STAGES, frameworksFor, TRANSFORMS } from "@/lib/craft";
 import HighlightedDraft, { type Flag } from "@/components/HighlightedDraft";
-import { ROLES } from "@/lib/db";
+import { ROLES } from "@/lib/roles";
 import type { PlainLanguageScore } from "@/lib/compliance";
 import { CHANNELS, PROFESSIONS, TONES } from "@/lib/brand";
-import { FACTS } from "@/lib/facts";
+import FactsBase from "@/components/FactsBase";
 import { PRIORITY_DOMAINS, type SearchResult } from "@/lib/search";
+import CreationToolkit from "@/components/CreationToolkit";
+import type { ContentPack } from "@/lib/contentPacks";
+import BriefProgress from "@/components/BriefProgress";
+import StatusBadge from "@/components/StatusBadge";
+import { useDraftRecovery } from "@/hooks/useDraftRecovery";
+import EvidencePanel from "@/components/EvidencePanel";
+import ReviewSummary from "@/components/ReviewSummary";
+import Activity from "@/components/Activity";
 
 interface Draft {
   title: string;
@@ -118,14 +126,64 @@ export default function Page() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState("");
   const [learned, setLearned] = useState<LearnedMeta | null>(null);
+  const [snapshots, setSnapshots] = useState<{ label: string; content: string }[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const savedSnapshots = window.localStorage.getItem("omega-draft-snapshots");
+      return savedSnapshots ? JSON.parse(savedSnapshots) : [];
+    } catch { return []; }
+  });
 
   const [searching, setSearching] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [auditing, setAuditing] = useState(false);
   const [error, setError] = useState("");
+  const [draftStatus, setDraftStatus] = useState("draft");
 
   const channel = CHANNELS.find((c) => c.id === view);
   const isChannel = Boolean(channel);
+
+  const recoveryBrief = useMemo(() => ({ profession, view, format, tone, topic, notes, wordTarget, stage, framework }), [profession, view, format, tone, topic, notes, wordTarget, stage, framework]);
+  const recovery = useDraftRecovery("omega-content-studio-brief", recoveryBrief, isChannel);
+
+  useEffect(() => {
+    if (!edited.trim()) return;
+    const timer = window.setTimeout(() => {
+      try { window.localStorage.setItem("omega-draft-autosave", edited); } catch { /* optional local preference */ }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [edited]);
+
+  useEffect(() => {
+    function shortcut(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (e.shiftKey) runAudit(); else generate();
+      }
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        document.getElementById("topic")?.focus();
+      }
+    }
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  });
+
+
+  function restoreBrief() {
+    const saved = recovery.recovered;
+    if (!saved) return;
+    setProfession(saved.profession || "gp");
+    setView(saved.view || "email");
+    setFormat(saved.format || "newsletter");
+    setTone(saved.tone || "educational");
+    setTopic(saved.topic || "");
+    setNotes(saved.notes || "");
+    setWordTarget(saved.wordTarget || "");
+    setStage(saved.stage || "mid");
+    setFramework(saved.framework || "");
+    recovery.dismissRecovery();
+  }
 
   const sources = useMemo(
     () =>
@@ -145,7 +203,8 @@ export default function Page() {
     setView(id);
     const c = CHANNELS.find((x) => x.id === id);
     if (c) setFormat(c.formats[0].id);
-    setDraft(null);
+      setDraft(null);
+    setDraftStatus("draft");
     setAudit(null);
     setEdited("");
     setLearned(null);
@@ -285,6 +344,7 @@ export default function Page() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setDraft(data.draft);
+      setDraftStatus("needs_review");
       setEdited(data.draft.content);
       setLearned(data.learned || null);
       setSaved("");
@@ -312,6 +372,7 @@ export default function Page() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setAudit(data.audit);
+      setDraftStatus(data.audit?.verdict === "ready" ? "compliance_review" : "needs_review");
       setRisk(data.risk || null);
       setPlain(data.plain || null);
       setVulnerable(data.vulnerable || []);
@@ -359,6 +420,14 @@ export default function Page() {
     setAudit(null);
     setRisk(null);
     setPlain(null);
+  }
+
+  function saveSnapshot() {
+    if (!edited.trim()) return;
+    const next = [{ label: new Date().toLocaleString("en-IE"), content: edited }, ...snapshots].slice(0, 8);
+    setSnapshots(next);
+    try { window.localStorage.setItem("omega-draft-snapshots", JSON.stringify(next)); } catch { /* optional local preference */ }
+    setSaved("Draft snapshot saved on this device.");
   }
 
   async function pushToHubspot() {
@@ -454,6 +523,8 @@ export default function Page() {
               ? "Review queue"
               : view === "campaigns"
               ? "Campaigns"
+              : view === "activity"
+              ? "Activity"
               : view === "knowledge"
               ? "Profession knowledge"
               : view === "estate"
@@ -477,8 +548,29 @@ export default function Page() {
           </div>
         </header>
 
-        {view === "library" && <Library />}
+        {view === "library" && (
+          <Library
+            onUsePack={(pack: ContentPack) => {
+              const professionByPack: Record<string, string> = {
+                "vet-income": "vet",
+                "physio-income": "physiotherapist",
+                "gp-income": "gp",
+                "dentist-income": "dentist",
+                "hse-income": "hse",
+                "consultant-income": "consultant",
+                "surveyor-income": "surveyor",
+                "pharmacist-income": "pharmacist",
+              };
+              setProfession(professionByPack[pack.id] || "gp");
+              setTopic(pack.name);
+              setNotes(`Use the ${pack.name} professional content pack.\n\nFocus on: ${pack.prompts.join(", ")}.`);
+              setView("email");
+              setFormat("newsletter");
+            }}
+          />
+        )}
         {view === "queue" && <Queue />}
+        {view === "activity" && <Activity />}
         {view === "knowledge" && <Knowledge />}
         {view === "estate" && <Estate />}
         {view === "voice" && <VoiceBank />}
@@ -507,7 +599,7 @@ export default function Page() {
             }}
           />
         )}
-        {view === "facts" && <FactsView />}
+        {view === "facts" && <FactsBase />}
         {view === "setup" && <SetupView />}
 
         {isChannel && (
@@ -554,6 +646,22 @@ export default function Page() {
                     {campaign.objective ? ` Objective: ${campaign.objective}.` : ""}{" "}
                     <button className="btn-quiet" onClick={() => setCampaign(null)}>Detach</button>
                   </p>
+                </div>
+              )}
+
+              <CreationToolkit
+                topic={topic}
+                profession={profession}
+                format={format}
+                channel={view}
+                notes={notes}
+                onNotesChange={setNotes}
+              />
+
+              {recovery.recovered && !topic.trim() && (
+                <div className="recovery-banner" role="status">
+                  <div><strong>Unfinished brief found</strong><span>Saved {new Date().toLocaleDateString("en-IE")} on this device.</span></div>
+                  <div className="btn-row"><button className="btn btn-primary" onClick={restoreBrief}>Restore brief</button><button className="btn-quiet" onClick={recovery.clearRecovery}>Start fresh</button></div>
                 </div>
               )}
 
@@ -689,8 +797,8 @@ export default function Page() {
                   <h2>Live sources</h2>
                   <span className="hint">
                     {sources.length
-                      ? `${sources.length} attached`
-                      : "Nothing attached — no external figures allowed"}
+                      ? `${sources.length} Irish source${sources.length === 1 ? "" : "s"} attached`
+                      : "Irish sources only — Google Ireland focus"}
                   </span>
                 </div>
                 <div className="panel-body">
@@ -815,6 +923,7 @@ export default function Page() {
                 </div>
               </section>
 
+              <BriefProgress steps={[{ label: "Channel", complete: Boolean(view) }, { label: "Format", complete: Boolean(format) }, { label: "Profession", complete: Boolean(profession) }, { label: "Topic", complete: Boolean(topic.trim()) }, { label: "Direction", complete: Boolean(notes.trim()) }]} />
               <div className="btn-row" style={{ marginBottom: 18 }}>
                 <button className="btn btn-primary" onClick={generate} disabled={drafting}>
                   {drafting ? "Drafting" : draft ? "Draft again" : "Write the draft"}
@@ -932,7 +1041,7 @@ export default function Page() {
                 <section className="panel">
                   <div className="panel-head">
                     <h2>{draft.title}</h2>
-                    <span className="hint">
+                    <span className="hint"><StatusBadge status={draftStatus} />{" "}
                       {learned && learned.mode !== "off"
                         ? `Drew on ${learned.exemplars} approved ${
                             learned.exemplars === 1 ? "piece" : "pieces"
@@ -941,9 +1050,10 @@ export default function Page() {
                           }, ${learned.lessons} learned ${
                             learned.lessons === 1 ? "correction" : "corrections"
                           }`
-                        : "Editable — audit runs on what you see"}
+                        : "Editable — audit runs on what you see"} · {edited.trim() ? edited.trim().split(/\s+/).length : 0} words
                     </span>
                   </div>
+                  <EvidencePanel learned={learned} sources={sources} />
                   {audit && flags.length > 0 && (
                     <div style={{ padding: "12px 18px 0" }}>
                       <div className="toggle-row" style={{ display: "inline-flex" }}>
@@ -977,6 +1087,12 @@ export default function Page() {
                       </ul>
                     </div>
                   )}
+                  <div className="draft-tools">
+                    <button className="btn-quiet" onClick={() => { setTransform("shorten"); setTransformNote("Keep every material caveat and reduce unnecessary wording."); }}>Shorten draft</button>
+                    <button className="btn-quiet" onClick={() => { setTransform("simplify"); setTransformNote("Use plain language for an Irish client."); }}>Simplify language</button>
+                    <button className="btn-quiet" onClick={saveSnapshot}>Save snapshot</button>
+                    {snapshots.length > 0 && <select aria-label="Restore draft snapshot" onChange={(e) => { const s = snapshots[Number(e.target.value)]; if (s) setEdited(s.content); }} defaultValue=""><option value="" disabled>Restore snapshot</option>{snapshots.map((s, i) => <option value={i} key={`${s.label}-${i}`}>{s.label}</option>)}</select>}
+                  </div>
                 </section>
               )}
 
@@ -1038,6 +1154,8 @@ export default function Page() {
                   )}
                 </div>
               )}
+
+              {audit && <ReviewSummary audit={audit} />}
 
               {draft && (
                 <section className="panel">
@@ -1310,48 +1428,6 @@ function Ledger({
 
 /* ------------------------------------------------------------- facts -- */
 
-function FactsView() {
-  return (
-    <div className="column">
-      <div className="prose" style={{ marginBottom: 18 }}>
-        <p>
-          This is the only set of Omega-specific claims the generator is allowed
-          to make. Anything not listed here has to come from a cited live source
-          or be left out. Edit <code>lib/facts.ts</code>, commit, and push — the
-          change is live on the next deploy.
-        </p>
-      </div>
-      <section className="panel">
-        <div className="panel-body">
-          <table className="facts-table">
-            <thead>
-              <tr>
-                <th>Fact</th>
-                <th>Value</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {FACTS.map((f) => (
-                <tr key={f.id}>
-                  <td>{f.label}</td>
-                  <td>
-                    {f.value}
-                    {f.note && <em>{f.note}</em>}
-                  </td>
-                  <td>
-                    <span className={`pill ${f.status}`}>{f.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 /* ------------------------------------------------------------- setup -- */
 
 function SetupView() {
@@ -1371,10 +1447,9 @@ function SetupView() {
           <p>
             <code>OPENAI_API_KEY</code> — your OpenAI key.
             <br />
-            <code>OPENAI_MODEL</code> — optional, defaults to <code>gpt-4o</code>.
+            <code>OPENAI_MODEL</code> — set this to <code>gpt-5.6-luna</code> for GPT-5.6 Luna, the cost-sensitive model.
             <br />
-            <code>SEARCH_PROVIDER</code> — <code>tavily</code>,{" "}
-            <code>serper</code> or <code>brave</code>.
+            <code>SEARCH_PROVIDER</code> — <code>serper</code> for Google Ireland, or <code>tavily</code>/<code>brave</code>.
             <br />
             <code>SEARCH_API_KEY</code> — the key for whichever you chose.
           </p>
@@ -1384,10 +1459,10 @@ function SetupView() {
           </p>
           <h3>Which search provider</h3>
           <p>
-            Tavily is the recommended one — it is built for grounding language
-            models and returns clean extracts with publication dates. Serper is
-            cheaper and gives raw Google results. Brave is the privacy option.
-            The code normalises all three, so switching is a one-line env change.
+            Serper is the default because it queries Google with Ireland as the
+            country and English Ireland as the language. News results are then
+            restricted to Irish domains and public Irish authorities. Tavily and
+            Brave remain available as alternatives.
           </p>
         </div>
       </section>
