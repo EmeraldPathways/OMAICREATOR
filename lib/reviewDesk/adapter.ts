@@ -1,6 +1,6 @@
 import { createReviewDeskEnv } from "./runtime";
 import { mapReviewDeskPath, resolveReviewDeskBrandId } from "./routes";
-import { isReviewDeskBrandId } from "./schema";
+import { ensureReviewDeskSchema, isReviewDeskBrandId } from "./schema";
 import worker from "./worker.js";
 
 const noStore = { "cache-control": "no-store", "x-content-type-options": "nosniff" };
@@ -11,6 +11,8 @@ export async function dispatchReviewDeskRequest(request: Request, ownerEmail: st
   if (!upstreamPath) return Response.json({ error: "Review Desk route not found." }, { status: 404, headers: noStore });
 
   try {
+    if (!ownerEmail.trim()) throw new Error("A signed-in Content Studio owner is required.");
+    if (upstreamPath !== "/") await ensureReviewDeskSchema(db);
     const brandId = await resolveReviewDeskBrandId(requestUrl, requestUrl.pathname, ownerEmail, db);
     if (!isReviewDeskBrandId(brandId)) return Response.json({ error: "Select a valid Content Studio business." }, { status: 400, headers: noStore });
     const runtime = createReviewDeskEnv({ brandId, ownerEmail, request, db, vars });

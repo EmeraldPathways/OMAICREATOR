@@ -114,7 +114,7 @@ export default function ImageStudio({ brand, campaignSeed, onClearCampaignSeed }
       {campaignSeed && <div className="verdict ready"><strong>Matching image brief</strong><p>{campaignSeed.topic}{campaignSeed.brief ? ` · ${campaignSeed.brief}` : ""} <button className="btn-quiet" onClick={onClearCampaignSeed}>Clear handoff</button></p></div>}
       {message && <div className={message.includes("created and saved") ? "verdict ready" : "alert"} role="status">{message}</div>}
       <section className="panel">
-        <div className="panel-head"><div><h2>Create a {brand.name} image</h2><span className="hint">Realistic product photography, kept inside this brand&apos;s visual settings</span></div></div>
+        <div className="panel-head"><div><h2>Create an image for {brand.name}</h2><span className="hint">Realistic product photography, kept inside this brand&apos;s visual settings</span></div></div>
         <div className="panel-body">
             <div className="field"><label htmlFor="image-subject">What should be in the image?</label><textarea id="image-subject" rows={3} value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Describe the subject, action, location and the moment you want to capture." /></div>
           <div className="grid-2">

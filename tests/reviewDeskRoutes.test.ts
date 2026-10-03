@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
+import vm from "node:vm";
 import { mapReviewDeskPath, resolveReviewDeskBrandId } from "../lib/reviewDesk/routes.ts";
 import { dispatchReviewDeskRequest } from "../lib/reviewDesk/adapter.ts";
 
@@ -11,8 +12,14 @@ function d1For(db: DatabaseSync) {
       return {
         bind(...values: unknown[]) { params = values; return this; },
         first() { return db.prepare(sql).get(...params) ?? null; },
+        all() { return { results: db.prepare(sql).all(...params) }; },
+        run() {
+          const result = db.prepare(sql).run(...params);
+          return { meta: { changes: Number(result.changes) } };
+        },
       };
     },
+    batch(statements: Array<{ run(): unknown }>) { return statements.map((statement) => statement.run()); },
   };
 }
 
@@ -59,4 +66,29 @@ test("the same-origin adapter returns the protected UI for an owner and rejects 
 
   const anonymous = await dispatchReviewDeskRequest(request, "", db, vars);
   assert.equal(anonymous.status, 401);
+});
+
+test("the embedded Review Desk client script is valid JavaScript", async () => {
+  const request = new Request("https://studio.test/api/review-desk/ui?brandId=omega-financial");
+  const db = { prepare() { throw new Error("UI shell should not query review data before loading."); } } as never;
+  const response = await dispatchReviewDeskRequest(request, "owner@example.ie", db, {});
+  const body = await response.text();
+  const script = body.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+
+  assert.ok(script, "expected the Review Desk UI to include a client script");
+  assert.doesNotThrow(() => new vm.Script(script));
+});
+
+test("the Review Desk state route installs its schema on a fresh Site database", async () => {
+  const sqlite = new DatabaseSync(":memory:");
+  const request = new Request("https://studio.test/api/review-desk/state?brandId=eco-car-wash");
+
+  const response = await dispatchReviewDeskRequest(request, "owner@example.ie", d1For(sqlite) as never, {});
+  const body = await response.json() as { reviews?: unknown[]; settings?: { business?: string } };
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.deepEqual(body.reviews, []);
+  assert.equal(body.settings?.business, "Your business");
+  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM rd_reviews").get().count, 0);
+  sqlite.close();
 });

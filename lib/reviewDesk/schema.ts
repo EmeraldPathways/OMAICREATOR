@@ -79,6 +79,23 @@ export const REVIEW_DESK_SCHEMA: string[] = [
   )`,
 ];
 
+const readyDatabases = new WeakMap<object, Promise<void>>();
+
+export async function ensureReviewDeskSchema(db: D1Database): Promise<void> {
+  const key = db as object;
+  const existing = readyDatabases.get(key);
+  if (existing) return existing;
+
+  const setup = Promise.resolve(db.batch(REVIEW_DESK_SCHEMA.map((statement) => db.prepare(statement))))
+    .then(() => undefined)
+    .catch((error) => {
+      readyDatabases.delete(key);
+      throw error;
+    });
+  readyDatabases.set(key, setup);
+  return setup;
+}
+
 export function assertReviewDeskBrandId(value: unknown): asserts value is BrandId {
   if (!isReviewDeskBrandId(value)) throw new Error("Select a valid Content Studio business.");
 }

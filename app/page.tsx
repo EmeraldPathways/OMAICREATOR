@@ -1585,11 +1585,11 @@ function SetupView() {
         </div>
         <div className="panel-body prose">
           <p>
-            Both keys live server-side as Vercel environment variables. They are
-            never sent to the browser, so a client can open the tool without
-            being able to read them.
+            Service credentials and model settings live server-side in the Site
+            environment. They are never sent to the browser, so a client can
+            open the tool without being able to read them.
           </p>
-          <h3>In Vercel — Settings, Environment Variables</h3>
+          <h3>In Sites — Environment</h3>
           <p>
             <code>OPENAI_API_KEY</code> — your OpenAI key.
             <br />
@@ -1600,8 +1600,8 @@ function SetupView() {
             <code>SEARCH_API_KEY</code> — the key for whichever you chose.
           </p>
           <p>
-            Redeploy after adding them. Environment variables are only picked up
-            at build time.
+            Save the environment changes, then redeploy the Site so the new
+            values are available to the app.
           </p>
           <h3>Which search provider</h3>
           <p>
