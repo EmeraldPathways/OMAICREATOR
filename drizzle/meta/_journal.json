@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1789650630807,
+      "tag": "0000_young_karnak",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790975917985,
+      "tag": "0001_short_apocalypse",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790976124643,
+      "tag": "0002_nosy_eternals",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { VOICE, COMPLIANCE, CHANNELS, PROFESSIONS } from "./brand";
 import { factsForPrompt } from "./facts";
 import { codeRulesForPrompt, VULNERABILITY_TRIGGERS } from "./compliance";
+import { getBrandProfile, type BrandId, type BrandProfile } from "./brandProfiles";
 
 export interface SourceDoc {
   n: number;
@@ -127,6 +128,105 @@ ${brief.notes ? `\nAdditional direction from the marketer:\n${brief.notes}` : ""
 ${sourceBlock(sources)}${learned ? `\n\n${learned}` : ""}`;
 
   return { system, user };
+}
+
+export function buildBrandDraftPrompt(
+  brandId: BrandId,
+  brief: Brief,
+  sources: SourceDoc[],
+  learned = "",
+  configuredProfile?: BrandProfile,
+): { system: string; user: string } {
+  if (brandId === "omega-financial") return buildDraftPrompt(brief, sources, learned);
+
+  const profile = configuredProfile || getBrandProfile(brandId);
+  const system = `You are the content lead for ${profile.name}.
+
+BRAND VOICE
+${profile.voice}
+
+FACTUAL AND CLAIM RULES
+Only make factual assertions supported by this brand's approved facts below or by an attached live source. If a required fact is missing, omit the claim or mark it [VERIFY: ...]. Never invent prices, guarantees, partnerships, testimonials, service details, product claims, or results.
+Approved facts for ${profile.name}:
+${profile.approvedFacts.length ? profile.approvedFacts.map((fact) => `- ${fact}`).join("\n") : "- None configured yet."}
+
+Claims this brand must avoid:
+${profile.prohibitedClaims.map((claim) => `- ${claim}`).join("\n")}
+
+PLATFORM AND FORMAT
+Channel: ${brief.channel}
+Format: ${brief.format}
+Audience: ${brief.profession || profile.audiences.join(", ") || "Not configured"}
+
+Return one JSON object with title, content, variants (three), claims, needs, and notes. Claims must quote the exact factual assertions in the content and identify their supporting fact or source. Do not introduce claims absent from this brand's profile or its approved facts.`;
+
+  const user = `Write a ${brief.format} for ${brief.channel}.
+
+Brand: ${profile.name}
+Audience: ${brief.profession || profile.audiences.join(", ") || "Not configured"}
+Topic: ${brief.topic}
+Tone: ${brief.tone}
+${brief.wordTarget ? `Word target: ${brief.wordTarget}` : ""}
+${brief.notes ? `\nAdditional direction from the marketer:\n${brief.notes}` : ""}
+
+${sourceBlock(sources)}${learned ? `\n\n${learned}` : ""}`;
+
+  return { system, user };
+}
+
+export function buildBrandAuditPrompt(
+  content: string,
+  brief: Brief,
+  sources: SourceDoc[],
+  profile: BrandProfile,
+  learned = "",
+) {
+  const system = `You are an independent fact and brand reviewer for ${profile.name}. Verify each factual claim against only the approved facts and source material supplied below. Do not apply financial-services rules or context from another business.
+
+BRAND VOICE
+${profile.voice}
+
+APPROVED FACTS
+${profile.approvedFacts.length ? profile.approvedFacts.map((fact) => `- ${fact}`).join("\n") : "- None configured yet."}
+
+PROHIBITED OR UNVERIFIED CLAIMS
+${profile.prohibitedClaims.map((claim) => `- ${claim}`).join("\n")}
+
+Return JSON only with verdict (ready, revise, block), summary, claims (exact quote, verified/unverified/contradicted, basis, comment), voice issues, and notes. Never mark an unsupported fact as verified.`;
+  const user = `Brand: ${profile.name}
+Channel: ${brief.channel}
+Audience: ${brief.profession || profile.audiences.join(", ") || "Not configured"}
+Topic: ${brief.topic}
+
+--- DRAFT ---
+${content}
+--- END DRAFT ---
+
+${sourceBlock(sources)}${learned ? `\n\n${learned}` : ""}`;
+  return { system, user };
+}
+
+export function buildBrandOperationPrompt(
+  profile: BrandProfile,
+  operation: string,
+  instructions: string,
+  input: unknown,
+): { system: string; user: string } {
+  const system = `You are the content specialist for ${profile.name}. Follow only this brand's voice and settings.
+
+VOICE
+${profile.voice}
+
+APPROVED FACTS
+${profile.approvedFacts.length ? profile.approvedFacts.map((fact) => `- ${fact}`).join("\n") : "- None configured yet."}
+
+CLAIMS TO AVOID
+${profile.prohibitedClaims.map((claim) => `- ${claim}`).join("\n")}
+
+FACT RULE: preserve the source's factual meaning. Do not add claims, prices, guarantees, partnerships, testimonials, product or service details, or results unless supported by this brand's approved facts or supplied sources. If facts are missing, mark them [VERIFY: ...].
+
+${instructions}`;
+  return { system, user: `Brand: ${profile.name}\nOperation: ${operation}\n\nInput JSON:\n${JSON.stringify(input)}` };
 }
 
 export function buildAuditPrompt(

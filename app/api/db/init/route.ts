@@ -8,7 +8,7 @@ export async function POST() {
   try {
     if (!hasDb()) {
       return NextResponse.json(
-        { error: "No DATABASE_URL. Add the Neon integration in Vercel > Storage, then redeploy." },
+        { error: "The hosted D1 database is unavailable. Check the DB binding and redeploy." },
         { status: 400 }
       );
     }

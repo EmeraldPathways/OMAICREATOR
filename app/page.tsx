@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Library from "@/components/Library";
 import Queue from "@/components/Queue";
@@ -11,11 +11,26 @@ import Interview from "@/components/Interview";
 import VoiceBank from "@/components/VoiceBank";
 import { CAREER_STAGES, frameworksFor, TRANSFORMS } from "@/lib/craft";
 import HighlightedDraft, { type Flag } from "@/components/HighlightedDraft";
-import { ROLES } from "@/lib/db";
+import { ROLES } from "@/lib/roles";
 import type { PlainLanguageScore } from "@/lib/compliance";
 import { CHANNELS, PROFESSIONS, TONES } from "@/lib/brand";
-import { FACTS } from "@/lib/facts";
+import FactsBase from "@/components/FactsBase";
 import { PRIORITY_DOMAINS, type SearchResult } from "@/lib/search";
+import CreationToolkit from "@/components/CreationToolkit";
+import type { ContentPack } from "@/lib/contentPacks";
+import BriefProgress from "@/components/BriefProgress";
+import StatusBadge from "@/components/StatusBadge";
+import { useDraftRecovery } from "@/hooks/useDraftRecovery";
+import EvidencePanel from "@/components/EvidencePanel";
+import ReviewSummary from "@/components/ReviewSummary";
+import Activity from "@/components/Activity";
+import BrandSwitcher from "@/components/BrandSwitcher";
+import BrandSettings from "@/components/BrandSettings";
+import ImageStudio from "@/components/ImageStudio";
+import StudioAccount from "@/components/StudioAccount";
+import RankScopeWorkspace from "@/components/RankScopeWorkspace";
+import ReviewDeskFrame from "@/components/review-desk/ReviewDeskFrame";
+import { BRAND_PROFILES, getBrandProfile, type BrandId, type BrandProfile } from "@/lib/brandProfiles";
 
 interface Draft {
   title: string;
@@ -71,9 +86,25 @@ function hostOf(url: string) {
   }
 }
 
+function readSnapshots(brandId: BrandId) {
+  if (typeof window === "undefined") return [];
+  try {
+    const saved = window.localStorage.getItem(`content-studio-${brandId}-snapshots`)
+      || (brandId === "omega-financial" ? window.localStorage.getItem("omega-draft-snapshots") : null);
+    return saved ? JSON.parse(saved) as { label: string; content: string }[] : [];
+  } catch { return []; }
+}
+
 export default function Page() {
   const [collapsed, setCollapsed] = useState(false);
   const [view, setView] = useState("email");
+  const [brandId, setBrandId] = useState<BrandId>("omega-financial");
+  const [brandProfiles, setBrandProfiles] = useState<BrandProfile[]>(Object.values(BRAND_PROFILES));
+  const [ownerAccess, setOwnerAccess] = useState(false);
+  const [reviewDeskConnected, setReviewDeskConnected] = useState(false);
+  const [imageStudioRevision, setImageStudioRevision] = useState(0);
+  const profile = brandProfiles.find((item) => item.id === brandId) || getBrandProfile(brandId);
+  const isOmega = brandId === "omega-financial";
 
   const [format, setFormat] = useState("newsletter");
   const [profession, setProfession] = useState("gp");
@@ -106,6 +137,7 @@ export default function Page() {
   const [plainDelta, setPlainDelta] = useState<{ before: PlainLanguageScore; after: PlainLanguageScore } | null>(null);
 
   const [campaign, setCampaign] = useState<CampaignRef | null>(null);
+  const [campaignSeed, setCampaignSeed] = useState<{ topic: string; brief?: string } | undefined>();
   const [risk, setRisk] = useState<Risk | null>(null);
   const [plain, setPlain] = useState<PlainLanguageScore | null>(null);
   const [vulnerable, setVulnerable] = useState<string[]>([]);
@@ -118,14 +150,96 @@ export default function Page() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState("");
   const [learned, setLearned] = useState<LearnedMeta | null>(null);
+  const [snapshots, setSnapshots] = useState<{ label: string; content: string }[]>(() => readSnapshots("omega-financial"));
 
   const [searching, setSearching] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [auditing, setAuditing] = useState(false);
   const [error, setError] = useState("");
+  const [draftStatus, setDraftStatus] = useState("draft");
 
-  const channel = CHANNELS.find((c) => c.id === view);
+  const selectedChannels = isOmega ? CHANNELS : profile.channels.map((id) => ({
+    id,
+    name: CHANNELS.find((item) => item.id === id)?.name || id.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    blurb: `For ${profile.name}`,
+    formats: profile.formats.map((formatId) => ({ id: formatId, name: formatId.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()), hint: "Brand content format" })),
+  }));
+  const channel = selectedChannels.find((item) => item.id === view);
   const isChannel = Boolean(channel);
+
+  const recoveryBrief = useMemo(() => ({ profession, view, format, tone, topic, notes, wordTarget, stage, framework }), [profession, view, format, tone, topic, notes, wordTarget, stage, framework]);
+  const recovery = useDraftRecovery(`content-studio-${brandId}-brief`, recoveryBrief, isChannel);
+
+  useEffect(() => {
+    const savedBrandId = (() => { try { return window.localStorage.getItem("content-studio-brand"); } catch { return null; } })();
+    const returnParams = new URLSearchParams(window.location.search);
+    const returnedBrandId = returnParams.get("brandId");
+    const returnedFromGoogle = returnParams.get("reviewDeskConnected") === "1";
+    fetch("/api/brands").then(async (response) => {
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!Array.isArray(data.brands)) return;
+      setBrandProfiles(data.brands);
+      setOwnerAccess(true);
+      if (returnedFromGoogle && returnedBrandId && data.brands.some((item: BrandProfile) => item.id === returnedBrandId)) {
+        const connectedProfile = data.brands.find((item: BrandProfile) => item.id === returnedBrandId) as BrandProfile;
+        setBrandId(connectedProfile.id);
+        setSnapshots(readSnapshots(connectedProfile.id));
+        setView("review-desk");
+        setReviewDeskConnected(true);
+        window.history.replaceState({}, "", window.location.pathname);
+        return;
+      }
+      if (savedBrandId && data.brands.some((item: BrandProfile) => item.id === savedBrandId)) {
+        const savedProfile = data.brands.find((item: BrandProfile) => item.id === savedBrandId) as BrandProfile;
+        setBrandId(savedProfile.id);
+        setSnapshots(readSnapshots(savedProfile.id));
+        const first = savedProfile.id === "omega-financial" ? CHANNELS[0] : undefined;
+        setView(first?.id || savedProfile.channels[0] || "email");
+        setFormat(first?.formats[0]?.id || savedProfile.formats[0] || "newsletter");
+        setProfession(savedProfile.audiences[0] || "");
+      }
+    }).catch(() => { /* non-owner workspaces remain on Omega */ });
+  }, []);
+
+  useEffect(() => {
+    if (!edited.trim()) return;
+    const timer = window.setTimeout(() => {
+      try { window.localStorage.setItem(`content-studio-${brandId}-autosave`, edited); } catch { /* optional local preference */ }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [edited, brandId]);
+
+  useEffect(() => {
+    function shortcut(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (e.shiftKey) runAudit(); else generate();
+      }
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        document.getElementById("topic")?.focus();
+      }
+    }
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  });
+
+
+  function restoreBrief() {
+    const saved = recovery.recovered;
+    if (!saved) return;
+    setProfession(saved.profession || "gp");
+    setView(saved.view || "email");
+    setFormat(saved.format || "newsletter");
+    setTone(saved.tone || "educational");
+    setTopic(saved.topic || "");
+    setNotes(saved.notes || "");
+    setWordTarget(saved.wordTarget || "");
+    setStage(saved.stage || "mid");
+    setFramework(saved.framework || "");
+    recovery.dismissRecovery();
+  }
 
   const sources = useMemo(
     () =>
@@ -142,10 +256,17 @@ export default function Page() {
   );
 
   function selectChannel(id: string) {
+    if (!selectedChannels.some((item) => item.id === id)) {
+      setView(id);
+      if (id !== "review-desk") setReviewDeskConnected(false);
+      return;
+    }
+    setReviewDeskConnected(false);
     setView(id);
-    const c = CHANNELS.find((x) => x.id === id);
+    const c = selectedChannels.find((x) => x.id === id);
     if (c) setFormat(c.formats[0].id);
-    setDraft(null);
+      setDraft(null);
+    setDraftStatus("draft");
     setAudit(null);
     setEdited("");
     setLearned(null);
@@ -157,6 +278,24 @@ export default function Page() {
     setAngles([]); setAngle(""); setHooks([]);
     setArc(null); setSeriesOut([]); setCarousel(null); setPlainDelta(null);
     setFramework("");
+  }
+
+  function selectBrand(id: BrandId) {
+    if (id !== "omega-financial" && !ownerAccess) return;
+    const keepReviewDeskOpen = view === "review-desk";
+    const next = brandProfiles.find((item) => item.id === id) || getBrandProfile(id);
+    setBrandId(id);
+    setSnapshots(readSnapshots(id));
+    try { window.localStorage.setItem("content-studio-brand", id); } catch { /* optional local preference */ }
+    const firstChannel = id === "omega-financial" ? "email" : next.channels[0] || "instagram";
+    setFormat(id === "omega-financial" ? "newsletter" : next.formats[0] || "single post");
+    setProfession(next.audiences[0] || "");
+    setTopic(""); setNotes(""); setWordTarget(""); setResults([]); setPicked({});
+    setDraft(null); setEdited(""); setAudit(null); setCampaign(null); setInterview(null);
+    setRisk(null); setPlain(null); setVulnerable([]); setPieceId(null); setLearned(null);
+    setAngles([]); setAngle(""); setHooks([]); setArc(null); setSeriesOut([]); setCarousel(null);
+    setFramework(""); setError(""); setSaved(""); setReviewDeskConnected(false); setView(keepReviewDeskOpen ? "review-desk" : firstChannel);
+    setCampaignSeed(undefined);
   }
 
   function craftBrief() {
@@ -186,20 +325,20 @@ export default function Page() {
 
   async function findAngles() {
     if (!topic.trim()) { setError("Give it a topic first."); return; }
-    const j = await post("/api/angles", { brief: craftBrief(), interviewId: interview?.id }, "angles");
+    const j = await post("/api/angles", { brandId, brief: craftBrief(), interviewId: interview?.id }, "angles");
     if (j) { setAngles(j.angles || []); setAngle(""); }
   }
 
   async function writeHooks() {
     if (!topic.trim()) { setError("Give it a topic first."); return; }
-    const j = await post("/api/hooks", { brief: craftBrief(), body: edited, interviewId: interview?.id }, "hooks");
+    const j = await post("/api/hooks", { brandId, brief: craftBrief(), body: edited, interviewId: interview?.id }, "hooks");
     if (j) setHooks(j.hooks || []);
   }
 
   async function rewrite() {
     if (!edited.trim()) { setError("There is nothing to rewrite."); return; }
     const j = await post("/api/rewrite", {
-      brief: craftBrief(), text: edited, transform, instruction: transformNote,
+      brandId, brief: craftBrief(), text: edited, transform, instruction: transformNote,
       interviewId: interview?.id,
     }, "rewrite");
     if (j) {
@@ -211,7 +350,7 @@ export default function Page() {
   }
 
   async function planSeries(count: number) {
-    const j = await post("/api/series", { brief: craftBrief(), count, interviewId: interview?.id }, "arc");
+    const j = await post("/api/series", { brandId, brief: craftBrief(), count, interviewId: interview?.id }, "arc");
     if (j) { setArc({ arc: j.arc, parts: j.parts || [] }); setSeriesOut([]); }
   }
 
@@ -223,7 +362,7 @@ export default function Page() {
       for (const part of arc.parts) {
         const res = await fetch("/api/series", {
           method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ brief: craftBrief(), part, arc: arc.arc, previous: done, interviewId: interview?.id }),
+          body: JSON.stringify({ brandId, brief: craftBrief(), part, arc: arc.arc, previous: done, interviewId: interview?.id }),
         });
         const j = await res.json();
         if (!res.ok) throw new Error(j.error);
@@ -238,7 +377,7 @@ export default function Page() {
   async function makeCarousel() {
     if (!topic.trim()) { setError("Give it a topic first."); return; }
     const j = await post("/api/carousel", {
-      brief: craftBrief(), source: edited || undefined, interviewId: interview?.id,
+      brandId, brief: craftBrief(), source: edited || undefined, interviewId: interview?.id,
     }, "carousel");
     if (j) setCarousel(j.carousel);
   }
@@ -251,7 +390,7 @@ export default function Page() {
       const res = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, news: newsMode }),
+        body: JSON.stringify({ brandId, query, news: newsMode }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -277,7 +416,7 @@ export default function Page() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          brief: craftBrief(),
+          brandId, brief: craftBrief(),
           interviewId: interview?.id || null,
           sources,
         }),
@@ -285,6 +424,7 @@ export default function Page() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setDraft(data.draft);
+      setDraftStatus("needs_review");
       setEdited(data.draft.content);
       setLearned(data.learned || null);
       setSaved("");
@@ -304,7 +444,7 @@ export default function Page() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: edited,
+          brandId, content: edited,
           brief: { channel: view, format, profession, topic, tone },
           sources,
         }),
@@ -312,6 +452,7 @@ export default function Page() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setAudit(data.audit);
+      setDraftStatus(data.audit?.verdict === "ready" ? "compliance_review" : "needs_review");
       setRisk(data.risk || null);
       setPlain(data.plain || null);
       setVulnerable(data.vulnerable || []);
@@ -361,6 +502,14 @@ export default function Page() {
     setPlain(null);
   }
 
+  function saveSnapshot() {
+    if (!edited.trim()) return;
+    const next = [{ label: new Date().toLocaleString("en-IE"), content: edited }, ...snapshots].slice(0, 8);
+    setSnapshots(next);
+    try { window.localStorage.setItem(`content-studio-${brandId}-snapshots`, JSON.stringify(next)); } catch { /* optional local preference */ }
+    setSaved("Draft snapshot saved on this device.");
+  }
+
   async function pushToHubspot() {
     setPushing(true);
     setError("");
@@ -399,7 +548,7 @@ export default function Page() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          brief: { channel: view, format, profession, topic, tone, notes },
+          brandId, brief: { channel: view, format, profession, topic, tone, notes },
           aiDraft: draft?.content,
           finalText: edited,
           verdict: audit?.verdict,
@@ -439,6 +588,10 @@ export default function Page() {
         onToggle={() => setCollapsed((c) => !c)}
         view={view}
         onSelect={selectChannel}
+        brandId={brandId}
+        brandName={profile.name}
+        channels={selectedChannels.map(({ id, name, blurb }) => ({ id, name, blurb }))}
+        ownerAccess={ownerAccess}
       />
 
       <div className="main">
@@ -454,6 +607,8 @@ export default function Page() {
               ? "Review queue"
               : view === "campaigns"
               ? "Campaigns"
+              : view === "activity"
+              ? "Activity"
               : view === "knowledge"
               ? "Profession knowledge"
               : view === "estate"
@@ -462,10 +617,17 @@ export default function Page() {
               ? "Voice bank"
               : view === "interview"
               ? "Advisor interview"
+              : view === "rankscope"
+              ? "RankScope"
+              : view === "review-desk"
+              ? "Review Desk"
               : "Setup"}{" "}
-            {channel && <em>— {channel.blurb}</em>}
+          {channel && <em>— {channel.blurb}</em>}
+          {view === "brand-settings" && <em>— {profile.name}</em>}
+          {view === "images" && <em>— {profile.name}</em>}
           </h1>
           <div className="topbar-actions">
+            <BrandSwitcher value={brandId} profiles={brandProfiles} canSwitch={ownerAccess} onChange={selectBrand} />
             {edited && (
               <button
                 className="btn btn-secondary"
@@ -474,15 +636,42 @@ export default function Page() {
                 Copy draft
               </button>
             )}
+            {draft && ownerAccess && <button className="btn btn-secondary" onClick={() => { setCampaignSeed({ topic: draft.title || topic, brief: edited.slice(0, 500) }); setImageStudioRevision((current) => current + 1); setView("images"); }}>Create matching image</button>}
+            <StudioAccount />
           </div>
         </header>
 
-        {view === "library" && <Library />}
-        {view === "queue" && <Queue />}
-        {view === "knowledge" && <Knowledge />}
-        {view === "estate" && <Estate />}
-        {view === "voice" && <VoiceBank />}
-        {view === "interview" && (
+        {view === "brand-settings" && ownerAccess && <BrandSettings key={brandId} brand={profile} onSaved={(updated) => setBrandProfiles((items) => items.map((item) => item.id === updated.id ? updated : item))} />}
+        {view === "images" && ownerAccess && <ImageStudio key={`${brandId}:${imageStudioRevision}`} brand={profile} campaignSeed={campaignSeed} onClearCampaignSeed={() => setCampaignSeed(undefined)} />}
+        {view === "library" && (
+          <Library
+            brandId={brandId}
+            channels={selectedChannels}
+            onUsePack={(pack: ContentPack) => {
+              const professionByPack: Record<string, string> = {
+                "vet-income": "vet",
+                "physio-income": "physiotherapist",
+                "gp-income": "gp",
+                "dentist-income": "dentist",
+                "hse-income": "hse",
+                "consultant-income": "consultant",
+                "surveyor-income": "surveyor",
+                "pharmacist-income": "pharmacist",
+              };
+              setProfession(professionByPack[pack.id] || "gp");
+              setTopic(pack.name);
+              setNotes(`Use the ${pack.name} professional content pack.\n\nFocus on: ${pack.prompts.join(", ")}.`);
+              setView("email");
+              setFormat("newsletter");
+            }}
+          />
+        )}
+        {view === "queue" && <Queue brandId={brandId} />}
+        {view === "activity" && <Activity brandId={brandId} />}
+        {view === "knowledge" && isOmega && <Knowledge brandId={brandId} audiences={profile.audiences} />}
+        {view === "estate" && isOmega && <Estate />}
+        {view === "voice" && <VoiceBank brandId={brandId} channels={selectedChannels.map(({ id, name }) => ({ id, name }))} />}
+        {view === "interview" && isOmega && (
           <Interview
             onUse={(i) => {
               setInterview({ id: i.id, advisor: i.advisor, topic: i.topic, profession: i.profession, stage: i.stage });
@@ -496,19 +685,29 @@ export default function Page() {
         )}
         {view === "campaigns" && (
           <Campaigns
+            brandId={brandId}
+            audiences={profile.audiences}
+            onCreateImage={(item) => {
+              setCampaignSeed({ topic: item.name, brief: [item.objective, item.theme, item.brief].filter(Boolean).join(". ") });
+              setImageStudioRevision((current) => current + 1);
+              setView("images");
+            }}
             onUse={(c) => {
               setCampaign({
                 id: c.id, name: c.name, profession: c.profession,
                 layer: c.layer, brief: c.brief, objective: c.objective,
               });
               setProfession(c.profession);
-              setView("email");
-              setFormat("newsletter");
+              const first = selectedChannels[0];
+              setView(first?.id || "email");
+              setFormat(first?.formats[0]?.id || "newsletter");
             }}
           />
         )}
-        {view === "facts" && <FactsView />}
+        {view === "facts" && <FactsBase brandId={brandId} brandName={profile.name} />}
         {view === "setup" && <SetupView />}
+        {view === "rankscope" && ownerAccess && <RankScopeWorkspace key={brandId} profile={profile} />}
+        {view === "review-desk" && ownerAccess && <ReviewDeskFrame key={brandId} brandId={brandId} brandName={profile.name} connected={reviewDeskConnected} />}
 
         {isChannel && (
           <div className="workspace">
@@ -557,6 +756,22 @@ export default function Page() {
                 </div>
               )}
 
+              {isOmega && <CreationToolkit
+                topic={topic}
+                profession={profession}
+                format={format}
+                channel={view}
+                notes={notes}
+                onNotesChange={setNotes}
+              />}
+
+              {recovery.recovered && !topic.trim() && (
+                <div className="recovery-banner" role="status">
+                  <div><strong>Unfinished brief found</strong><span>Saved {new Date().toLocaleDateString("en-IE")} on this device.</span></div>
+                  <div className="btn-row"><button className="btn btn-primary" onClick={restoreBrief}>Restore brief</button><button className="btn-quiet" onClick={recovery.clearRecovery}>Start fresh</button></div>
+                </div>
+              )}
+
               {/* ---------------------------------------------- brief -- */}
               <section className="panel">
                 <div className="panel-head">
@@ -582,7 +797,7 @@ export default function Page() {
                   <div className="field">
                     <label>Audience</label>
                     <div className="chips">
-                      {PROFESSIONS.map((p) => (
+                      {(isOmega ? PROFESSIONS.map((p) => ({ id: p.id, name: p.name })) : profile.audiences.map((audience) => ({ id: audience, name: audience }))).map((p) => (
                         <button
                           key={p.id}
                           className={profession === p.id ? "chip on" : "chip"}
@@ -594,10 +809,8 @@ export default function Page() {
                     </div>
                   </div>
 
-                  <div className="field">
-                    <label>
-                      Career stage <span className="sub">— a piece for everyone is a piece for nobody</span>
-                    </label>
+                  {isOmega && <div className="field">
+                    <label>Career stage <span className="sub">— a piece for everyone is a piece for nobody</span></label>
                     <div className="chips">
                       {CAREER_STAGES.map((st) => (
                         <button
@@ -615,9 +828,9 @@ export default function Page() {
                       const note = st?.byProfession[profession];
                       return note ? <p className="stage-note">{note}</p> : null;
                     })()}
-                  </div>
+                  </div>}
 
-                  {frameworksFor(view).length > 0 && (
+                  {isOmega && frameworksFor(view).length > 0 && (
                     <div className="field">
                       <label htmlFor="fw">
                         Structure <span className="sub">— what makes an Omega piece recognisable</span>
@@ -689,8 +902,8 @@ export default function Page() {
                   <h2>Live sources</h2>
                   <span className="hint">
                     {sources.length
-                      ? `${sources.length} attached`
-                      : "Nothing attached — no external figures allowed"}
+                      ? `${sources.length} Irish source${sources.length === 1 ? "" : "s"} attached`
+                    : isOmega ? "Irish sources only — Google Ireland focus" : "Search and attach useful sources for this brand"}
                   </span>
                 </div>
                 <div className="panel-body">
@@ -767,7 +980,7 @@ export default function Page() {
                           <div className="source-meta">
                             <span className={trusted ? "trusted" : undefined}>
                               {host}
-                              {trusted ? " · trusted for Irish financial facts" : ""}
+                              {trusted ? isOmega ? " · trusted for Irish financial facts" : " · priority source" : ""}
                             </span>
                             {r.published ? ` · ${r.published}` : ""}
                           </div>
@@ -815,6 +1028,7 @@ export default function Page() {
                 </div>
               </section>
 
+              <BriefProgress steps={[{ label: "Channel", complete: Boolean(view) }, { label: "Format", complete: Boolean(format) }, { label: isOmega ? "Profession" : "Audience", complete: Boolean(profession) }, { label: "Topic", complete: Boolean(topic.trim()) }, { label: "Direction", complete: Boolean(notes.trim()) }]} />
               <div className="btn-row" style={{ marginBottom: 18 }}>
                 <button className="btn btn-primary" onClick={generate} disabled={drafting}>
                   {drafting ? "Drafting" : draft ? "Draft again" : "Write the draft"}
@@ -932,7 +1146,7 @@ export default function Page() {
                 <section className="panel">
                   <div className="panel-head">
                     <h2>{draft.title}</h2>
-                    <span className="hint">
+                    <span className="hint"><StatusBadge status={draftStatus} />{" "}
                       {learned && learned.mode !== "off"
                         ? `Drew on ${learned.exemplars} approved ${
                             learned.exemplars === 1 ? "piece" : "pieces"
@@ -941,9 +1155,10 @@ export default function Page() {
                           }, ${learned.lessons} learned ${
                             learned.lessons === 1 ? "correction" : "corrections"
                           }`
-                        : "Editable — audit runs on what you see"}
+                        : "Editable — audit runs on what you see"} · {edited.trim() ? edited.trim().split(/\s+/).length : 0} words
                     </span>
                   </div>
+                  <EvidencePanel learned={learned} sources={sources} />
                   {audit && flags.length > 0 && (
                     <div style={{ padding: "12px 18px 0" }}>
                       <div className="toggle-row" style={{ display: "inline-flex" }}>
@@ -977,6 +1192,12 @@ export default function Page() {
                       </ul>
                     </div>
                   )}
+                  <div className="draft-tools">
+                    <button className="btn-quiet" onClick={() => { setTransform("shorten"); setTransformNote("Keep every material caveat and reduce unnecessary wording."); }}>Shorten draft</button>
+                    <button className="btn-quiet" onClick={() => { setTransform("simplify"); setTransformNote("Use plain language for an Irish client."); }}>Simplify language</button>
+                    <button className="btn-quiet" onClick={saveSnapshot}>Save snapshot</button>
+                    {snapshots.length > 0 && <select aria-label="Restore draft snapshot" onChange={(e) => { const s = snapshots[Number(e.target.value)]; if (s) setEdited(s.content); }} defaultValue=""><option value="" disabled>Restore snapshot</option>{snapshots.map((s, i) => <option value={i} key={`${s.label}-${i}`}>{s.label}</option>)}</select>}
+                  </div>
                 </section>
               )}
 
@@ -1038,6 +1259,8 @@ export default function Page() {
                   )}
                 </div>
               )}
+
+              {audit && <ReviewSummary audit={audit} />}
 
               {draft && (
                 <section className="panel">
@@ -1310,48 +1533,6 @@ function Ledger({
 
 /* ------------------------------------------------------------- facts -- */
 
-function FactsView() {
-  return (
-    <div className="column">
-      <div className="prose" style={{ marginBottom: 18 }}>
-        <p>
-          This is the only set of Omega-specific claims the generator is allowed
-          to make. Anything not listed here has to come from a cited live source
-          or be left out. Edit <code>lib/facts.ts</code>, commit, and push — the
-          change is live on the next deploy.
-        </p>
-      </div>
-      <section className="panel">
-        <div className="panel-body">
-          <table className="facts-table">
-            <thead>
-              <tr>
-                <th>Fact</th>
-                <th>Value</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {FACTS.map((f) => (
-                <tr key={f.id}>
-                  <td>{f.label}</td>
-                  <td>
-                    {f.value}
-                    {f.note && <em>{f.note}</em>}
-                  </td>
-                  <td>
-                    <span className={`pill ${f.status}`}>{f.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 /* ------------------------------------------------------------- setup -- */
 
 function SetupView() {
@@ -1371,10 +1552,9 @@ function SetupView() {
           <p>
             <code>OPENAI_API_KEY</code> — your OpenAI key.
             <br />
-            <code>OPENAI_MODEL</code> — optional, defaults to <code>gpt-4o</code>.
+            <code>OPENAI_MODEL</code> — set this to <code>gpt-5.6-luna</code> for GPT-5.6 Luna, the cost-sensitive model.
             <br />
-            <code>SEARCH_PROVIDER</code> — <code>tavily</code>,{" "}
-            <code>serper</code> or <code>brave</code>.
+            <code>SEARCH_PROVIDER</code> — <code>serper</code> for Google Ireland, or <code>tavily</code>/<code>brave</code>.
             <br />
             <code>SEARCH_API_KEY</code> — the key for whichever you chose.
           </p>
@@ -1384,10 +1564,10 @@ function SetupView() {
           </p>
           <h3>Which search provider</h3>
           <p>
-            Tavily is the recommended one — it is built for grounding language
-            models and returns clean extracts with publication dates. Serper is
-            cheaper and gives raw Google results. Brave is the privacy option.
-            The code normalises all three, so switching is a one-line env change.
+            Serper is the default because it queries Google with Ireland as the
+            country and English Ireland as the language. News results are then
+            restricted to Irish domains and public Irish authorities. Tavily and
+            Brave remain available as alternatives.
           </p>
         </div>
       </section>

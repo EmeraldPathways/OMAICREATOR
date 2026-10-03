@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { chatJSON, resolveOpenAIKey } from "@/lib/openai";
-import { buildRepurposePrompt } from "@/lib/prompts";
+import { buildBrandOperationPrompt, buildRepurposePrompt } from "@/lib/prompts";
 import { retrieve, learnedBlock } from "@/lib/learn";
 import { db, hasDb } from "@/lib/db";
+import { authorizeBrandAccess } from "@/lib/brandAccess";
+import { getConfiguredBrandProfile } from "@/lib/brandProfileStore";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -15,6 +17,8 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   try {
     const b = await req.json();
+    const access = await authorizeBrandAccess(b.brandId);
+    if (!access.ok) return access.response;
     const { sourceId, target } = b;
 
     if (!sourceId || !target?.channel || !target?.format) {
@@ -33,7 +37,7 @@ export async function POST(req: Request) {
     const sql = db();
     const rows = await sql`
       SELECT id, channel, format, profession, topic, final_text, status
-      FROM pieces WHERE id = ${sourceId} AND retired_at IS NULL`;
+      FROM pieces WHERE id = ${sourceId} AND brand_id = ${access.brandId} AND retired_at IS NULL`;
     if (!rows.length) return NextResponse.json({ error: "No such piece." }, { status: 404 });
 
     const src = rows[0];
@@ -53,16 +57,16 @@ export async function POST(req: Request) {
 
     const learnedCtx = await retrieve(
       { channel: target.channel, profession: sourceBrief.profession, topic: sourceBrief.topic },
-      key
+      key,
+      access.brandId,
     );
 
-    const { system, user } = buildRepurposePrompt(
-      String(src.final_text),
-      sourceBrief,
-      target,
-      [],
-      learnedBlock(learnedCtx)
-    );
+    const prompt = access.brandId === "omega-financial"
+      ? buildRepurposePrompt(String(src.final_text), sourceBrief, target, [], learnedBlock(learnedCtx))
+      : buildBrandOperationPrompt(await getConfiguredBrandProfile(access.brandId), "repurpose approved copy",
+          "Adapt the approved source copy to the target channel and format. Preserve its meaning and do not add facts. Return JSON only with title, content, variants, claims, needs, and notes.",
+          { sourceText: String(src.final_text), sourceBrief, target, learnedContext: learnedBlock(learnedCtx) });
+    const { system, user } = prompt;
 
     const draft = await chatJSON<Record<string, unknown>>({
       system,

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { chatJSON, resolveOpenAIKey } from "@/lib/openai";
-import { buildCarouselPrompt, type CraftBrief } from "@/lib/prompts";
+import { buildBrandOperationPrompt, buildCarouselPrompt, type CraftBrief } from "@/lib/prompts";
 import { gatherCraft } from "@/lib/craftContext";
+import { authorizeBrandAccess } from "@/lib/brandAccess";
+import { getConfiguredBrandProfile } from "@/lib/brandProfileStore";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -21,13 +23,20 @@ function cleanSvg(svg: string): string {
 export async function POST(req: Request) {
   try {
     const b = await req.json();
+    const access = await authorizeBrandAccess(b.brandId);
+    if (!access.ok) return access.response;
     const brief: CraftBrief = b.brief;
     if (!brief?.topic?.trim()) {
       return NextResponse.json({ error: "Give the carousel a topic." }, { status: 400 });
     }
     const key = resolveOpenAIKey(b.runtimeKey);
-    const craft = await gatherCraft(brief, b.interviewId);
-    const { system, user } = buildCarouselPrompt(brief, craft, b.source);
+    const craft = await gatherCraft(brief, b.interviewId, access.brandId);
+    const prompt = access.brandId === "omega-financial"
+      ? buildCarouselPrompt(brief, craft, b.source)
+      : buildBrandOperationPrompt(await getConfiguredBrandProfile(access.brandId), "social carousel",
+          "Create a concise slide-by-slide carousel with accessible copy and alt text. Return JSON only: {slides:[{n,heading,body,visual,altText}],caption,hashtags}.",
+          { brief, source: b.source || "" });
+    const { system, user } = prompt;
 
     const out = await chatJSON<{ slides: { svg: string }[] }>({
       system, user, apiKey: key, model: b.model, temperature: 0.5,

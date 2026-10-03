@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { runSearch, resolveSearchKey } from "@/lib/search";
+import { authorizeBrandAccess } from "@/lib/brandAccess";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
   try {
-    const { query, news, runtimeKey } = await req.json();
+    const body = await req.json();
+    const access = await authorizeBrandAccess(body.brandId);
+    if (!access.ok) return access.response;
+    const { query, news, runtimeKey } = body;
     if (!query || typeof query !== "string") {
       return NextResponse.json({ error: "A search query is required." }, { status: 400 });
     }

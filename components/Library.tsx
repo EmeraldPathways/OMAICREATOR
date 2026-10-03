@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { CHANNELS } from "@/lib/brand";
+import { CONTENT_PACKS, type ContentPack } from "@/lib/contentPacks";
 
 interface Piece {
   id: number;
@@ -55,14 +56,78 @@ interface LibraryData {
 
 const day = (s: string) => new Date(s).toISOString().slice(0, 10);
 
-export default function Library() {
+interface LibraryProps {
+  onUsePack?: (pack: ContentPack) => void;
+  brandId?: string;
+  channels?: { id: string; name: string; formats: { id: string; name: string }[] }[];
+}
+
+function ContentPacks({ onUsePack }: LibraryProps) {
+  const [query, setQuery] = useState("");
+  const filtered = CONTENT_PACKS.filter((pack) =>
+    `${pack.name} ${pack.category} ${pack.source} ${pack.summary} ${pack.prompts.join(" ")}`
+      .toLowerCase()
+      .includes(query.toLowerCase())
+  );
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h2>Professional content packs</h2>
+          <span className="hint">Your supplied Omega source material, ready to guide new drafts</span>
+        </div>
+        <span className="pill verified">{CONTENT_PACKS.length} packs</span>
+      </div>
+      <div className="panel-body">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search professions, pensions or prompts"
+          aria-label="Search professional content packs"
+          style={{ marginBottom: 14 }}
+        />
+        <div className="pack-grid">
+          {filtered.map((pack) => (
+            <article className="pack-card" key={pack.id}>
+              <div className="pack-card-head">
+                <span className="basis">{pack.category}</span>
+                <strong>{pack.name}</strong>
+              </div>
+              <p>{pack.summary}</p>
+              <small>Source: {pack.source}</small>
+              <div className="chips compact-chips">
+                {pack.prompts.map((prompt) => <span className="chip" key={prompt}>{prompt}</span>)}
+              </div>
+              {onUsePack && (
+                <button className="btn btn-secondary" onClick={() => onUsePack(pack)}>
+                  Use in a new draft
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+        {!filtered.length && <div className="empty"><strong>No matching packs</strong><p>Try a profession, pension term or prompt.</p></div>}
+      </div>
+    </section>
+  );
+}
+
+export default function Library({ onUsePack, brandId = "omega-financial", channels = CHANNELS.map(({ id, name }) => ({ id, name })) }: LibraryProps) {
   const [data, setData] = useState<LibraryData | null>(null);
   const [busy, setBusy] = useState(true);
   const [msg, setMsg] = useState("");
-  const [tab, setTab] = useState<"facts" | "lessons" | "pieces">("facts");
+  const [tab, setTab] = useState<"packs" | "facts" | "lessons" | "pieces">(brandId === "omega-financial" ? "packs" : "facts");
   const [repurposing, setRepurposing] = useState<number | null>(null);
   const [repurposed, setRepurposed] = useState<{ id: number; content: string; needs: string[]; dropped: string[] } | null>(null);
   const [target, setTarget] = useState("linkedin:short");
+  const [editing, setEditing] = useState<number | null>(null);
+  const [editClaim, setEditClaim] = useState("");
+  const [editValue, setEditValue] = useState("");
+  const [editSourceUrl, setEditSourceUrl] = useState("");
+  const [editVerifiedBy, setEditVerifiedBy] = useState("");
+  const [editMonths, setEditMonths] = useState("6");
 
   const [claim, setClaim] = useState("");
   const [value, setValue] = useState("");
@@ -73,7 +138,7 @@ export default function Library() {
   async function load() {
     setBusy(true);
     try {
-      const res = await fetch("/api/library");
+      const res = await fetch(`/api/library?brandId=${encodeURIComponent(brandId)}`);
       setData(await res.json());
     } catch {
       setData({ connected: false });
@@ -83,8 +148,10 @@ export default function Library() {
   }
 
   useEffect(() => {
+    setTab(brandId === "omega-financial" ? "packs" : "facts");
+    setTarget(`${channels[0]?.id || "email"}:${brandId === "omega-financial" ? "short" : "single post"}`);
     load();
-  }, []);
+  }, [brandId]);
 
   async function setupSchema() {
     setBusy(true);
@@ -115,7 +182,7 @@ export default function Library() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        claim,
+        brandId, claim,
         value,
         sourceUrl,
         verifiedBy,
@@ -138,9 +205,50 @@ export default function Library() {
     await fetch("/api/facts", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id, brandId }),
     });
     load();
+  }
+
+  function startEditing(fact: Fact) {
+    setEditing(fact.id);
+    setEditClaim(fact.claim);
+    setEditValue(fact.value);
+    setEditSourceUrl(fact.source_url);
+    setEditVerifiedBy(fact.verified_by);
+    setEditMonths("6");
+    setMsg("");
+  }
+
+  async function saveEdit() {
+    if (!editing || !editClaim.trim() || !editValue.trim() || !editSourceUrl.trim() || !editVerifiedBy.trim()) {
+      setMsg("Complete every field before saving the edited figure.");
+      return;
+    }
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/facts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brandId, id: editing,
+          claim: editClaim,
+          value: editValue,
+          sourceUrl: editSourceUrl,
+          verifiedBy: editVerifiedBy,
+          monthsValid: Number(editMonths),
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error);
+      setEditing(null);
+      setMsg("Updated in the database. The writer will use the revised figure.");
+      await load();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Could not update the figure.");
+      setBusy(false);
+    }
   }
 
   async function repurpose(id: number) {
@@ -152,7 +260,7 @@ export default function Library() {
       const res = await fetch("/api/repurpose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceId: id, target: { channel, format } }),
+        body: JSON.stringify({ brandId, sourceId: id, target: { channel, format } }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error);
@@ -173,7 +281,7 @@ export default function Library() {
     await fetch("/api/library", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id, brandId }),
     });
     load();
   }
@@ -198,11 +306,10 @@ export default function Library() {
           <div className="panel-body prose">
             <p>
               The tool works without one — it just cannot remember anything
-              between sessions. To turn memory on, open your project in Vercel,
-              go to <b>Storage</b>, add the <b>Neon</b> Postgres integration, and
-              redeploy. The integration injects <code>DATABASE_URL</code> for you.
+              between sessions. The hosted D1 database is available for this
+              site; use the button below to create its tables if they are missing.
             </p>
-            <p>Then come back here and create the tables.</p>
+            <p>Once the tables exist, professional knowledge, campaigns and approved drafts will persist.</p>
           </div>
         </section>
       </div>
@@ -234,9 +341,18 @@ export default function Library() {
         </section>
       )}
 
+      {noTables && brandId === "omega-financial" && <ContentPacks onUsePack={onUsePack} />}
+
       {!noTables && (
         <>
           <div className="chips" style={{ marginBottom: 16 }}>
+            {brandId === "omega-financial" && <button
+              className={tab === "packs" ? "chip on" : "chip"}
+              onClick={() => setTab("packs")}
+            >
+              Content packs
+              <small>{CONTENT_PACKS.length} ready</small>
+            </button>}
             <button
               className={tab === "facts" ? "chip on" : "chip"}
               onClick={() => setTab("facts")}
@@ -259,6 +375,8 @@ export default function Library() {
               <small>{data.pieces?.length || 0} pieces</small>
             </button>
           </div>
+
+          {brandId === "omega-financial" && tab === "packs" && <ContentPacks onUsePack={onUsePack} />}
 
           {/* ------------------------------------------------- figures -- */}
           {tab === "facts" && (
@@ -283,9 +401,9 @@ export default function Library() {
                           </a>
                         </em>
                       </div>
-                      <button className="btn-quiet" onClick={() => retireFact(f.id)}>
-                        Retire
-                      </button>
+                                <button className="btn-quiet" onClick={() => retireFact(f.id)}>
+                                  Retire
+                                </button>
                     </div>
                   ))}
                 </div>
@@ -370,26 +488,45 @@ export default function Library() {
                       </thead>
                       <tbody>
                         {live.map((f) => (
-                          <tr key={f.id}>
-                            <td>
-                              {f.claim}
-                              <em>
-                                Checked by {f.verified_by} on {day(f.verified_at)} ·{" "}
-                                <a href={f.source_url} target="_blank" rel="noreferrer">
-                                  source
-                                </a>
-                              </em>
-                            </td>
-                            <td>{f.value}</td>
-                            <td>
-                              <span className="pill verified">{day(f.expires_at)}</span>
-                            </td>
-                            <td>
-                              <button className="btn-quiet" onClick={() => retireFact(f.id)}>
-                                Retire
-                              </button>
-                            </td>
-                          </tr>
+                          <Fragment key={f.id}>
+                            <tr key={f.id}>
+                              <td>
+                                {f.claim}
+                                <em>
+                                  Checked by {f.verified_by} on {day(f.verified_at)} ·{" "}
+                                  <a href={f.source_url} target="_blank" rel="noreferrer">
+                                    source
+                                  </a>
+                                </em>
+                              </td>
+                              <td>{f.value}</td>
+                              <td><span className="pill verified">{day(f.expires_at)}</span></td>
+                              <td>
+                                <div className="btn-row">
+                                  <button className="btn-quiet" onClick={() => startEditing(f)}>Edit</button>
+                                  <button className="btn-quiet" onClick={() => retireFact(f.id)}>Retire</button>
+                                </div>
+                              </td>
+                            </tr>
+                            {editing === f.id && (
+                            <tr key={`${f.id}-edit`} className="fact-edit-row">
+                              <td colSpan={4}>
+                                <div className="fact-edit">
+                                  <div className="grid-2">
+                                    <div className="field"><label>What the figure is</label><input value={editClaim} onChange={(e) => setEditClaim(e.target.value)} /></div>
+                                    <div className="field"><label>The value</label><input value={editValue} onChange={(e) => setEditValue(e.target.value)} /></div>
+                                  </div>
+                                  <div className="field"><label>Source URL</label><input value={editSourceUrl} onChange={(e) => setEditSourceUrl(e.target.value)} /></div>
+                                  <div className="grid-2">
+                                    <div className="field"><label>Checked by</label><input value={editVerifiedBy} onChange={(e) => setEditVerifiedBy(e.target.value)} /></div>
+                                    <div className="field"><label>Valid for</label><select value={editMonths} onChange={(e) => setEditMonths(e.target.value)}><option value="3">3 months</option><option value="6">6 months</option><option value="12">12 months</option></select></div>
+                                  </div>
+                                  <div className="btn-row"><button className="btn btn-primary" onClick={saveEdit} disabled={busy}>Save changes</button><button className="btn-quiet" onClick={() => setEditing(null)}>Cancel</button></div>
+                                </div>
+                              </td>
+                            </tr>
+                            )}
+                          </Fragment>
                         ))}
                       </tbody>
                     </table>
@@ -489,7 +626,7 @@ export default function Library() {
 
                     <div className="btn-row">
                       <select value={target} onChange={(e) => setTarget(e.target.value)} style={{ maxWidth: 260 }}>
-                        {CHANNELS.flatMap((c) =>
+                        {channels.flatMap((c) =>
                           c.formats.map((f) => (
                             <option key={`${c.id}:${f.id}`} value={`${c.id}:${f.id}`}>
                               {c.name} — {f.name}

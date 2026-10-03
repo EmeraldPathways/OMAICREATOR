@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ROLES } from "@/lib/db";
+import { ROLES } from "@/lib/roles";
 
 interface Item {
   id: number;
@@ -33,7 +33,7 @@ interface Version {
 const band = (s: number | null) =>
   s === null ? "none" : s === 0 ? "clean" : s < 20 ? "low" : s < 50 ? "medium" : s < 75 ? "high" : "severe";
 
-export default function Queue() {
+export default function Queue({ brandId = "omega-financial" }: { brandId?: string }) {
   const [items, setItems] = useState<Item[]>([]);
   const [connected, setConnected] = useState(true);
   const [busy, setBusy] = useState(true);
@@ -45,7 +45,7 @@ export default function Queue() {
   async function load() {
     setBusy(true);
     try {
-      const res = await fetch("/api/queue");
+      const res = await fetch(`/api/queue?brandId=${encodeURIComponent(brandId)}`);
       const j = await res.json();
       setConnected(j.connected !== false);
       setItems(j.items || []);
@@ -54,7 +54,7 @@ export default function Queue() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [brandId]);
 
   async function move(id: number, status: string) {
     if (!actor.trim()) {
@@ -65,7 +65,7 @@ export default function Queue() {
     const res = await fetch("/api/queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status, actor, role }),
+      body: JSON.stringify({ brandId, id, status, actor, role }),
     });
     const j = await res.json();
     if (!res.ok) { setMsg(j.error); return; }
@@ -74,7 +74,7 @@ export default function Queue() {
 
   async function openHistory(id: number) {
     if (history?.id === id) { setHistory(null); return; }
-    const res = await fetch(`/api/versions?id=${id}`);
+    const res = await fetch(`/api/versions?id=${id}&brandId=${encodeURIComponent(brandId)}`);
     const j = await res.json();
     setHistory({ id, versions: j.versions || [] });
   }

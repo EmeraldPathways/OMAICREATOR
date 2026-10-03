@@ -1,0 +1,165 @@
+import { decryptRefreshToken, loadGoogleConnection } from "./google-oauth";
+
+type RuntimeEnv = {
+  STUDIO_OWNER_EMAIL?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_REFRESH_TOKEN?: string;
+  GOOGLE_PAGESPEED_API_KEY?: string;
+  GSC_SITE_URL?: string;
+  GA4_PROPERTY_ID?: string;
+  DATAFORSEO_LOGIN?: string;
+  DATAFORSEO_PASSWORD?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_MODEL?: string;
+  GOOGLE_OAUTH_REDIRECT_URI?: string;
+  GOOGLE_TOKEN_ENCRYPTION_KEY?: string;
+};
+
+export function runtimeEnv(): RuntimeEnv {
+  return process.env as RuntimeEnv;
+}
+
+export function requireOwner(request: Request): Response | null {
+  const configuredOwner = runtimeEnv().STUDIO_OWNER_EMAIL?.trim().toLowerCase();
+  const signedInEmail = request.headers
+    .get("x-studio-owner-email")
+    ?.trim()
+    .toLowerCase();
+
+  if (!configuredOwner) {
+    return Response.json(
+      { error: "Owner access has not been configured." },
+      { status: 503 },
+    );
+  }
+
+  if (!signedInEmail || signedInEmail !== configuredOwner) {
+    return Response.json(
+      { error: "Owner sign-in is required for private analytics data." },
+      { status: 401 },
+    );
+  }
+
+  return null;
+}
+
+export function workspaceKey(request: Request) {
+  return request.headers.get("x-studio-owner-email")?.trim().toLowerCase() || "";
+}
+
+export async function googleConnectorStatus(request: Request) {
+  const values = runtimeEnv();
+  let storedConnection = false;
+  let storageReady = true;
+  const key = workspaceKey(request);
+  if (key && values.GOOGLE_TOKEN_ENCRYPTION_KEY) {
+    try {
+      storedConnection = Boolean(await loadGoogleConnection(key));
+    } catch {
+      storageReady = false;
+    }
+  }
+  const oauth = Boolean(
+    values.GOOGLE_CLIENT_ID &&
+      values.GOOGLE_CLIENT_SECRET &&
+      (values.GOOGLE_REFRESH_TOKEN || storedConnection),
+  );
+
+  return {
+    // Google supports low-volume PageSpeed requests without a key. A key is
+    // still used automatically when configured for higher, steadier quotas.
+    pageSpeed: true,
+    searchConsole: oauth && Boolean(values.GSC_SITE_URL),
+    analytics: oauth && Boolean(values.GA4_PROPERTY_ID),
+    seoData: Boolean(values.DATAFORSEO_LOGIN && values.DATAFORSEO_PASSWORD),
+    googleOAuthReady: Boolean(values.GOOGLE_CLIENT_ID && values.GOOGLE_CLIENT_SECRET),
+    googleConnected: Boolean(values.GOOGLE_REFRESH_TOKEN || storedConnection),
+    googleConnectionStored: storedConnection,
+    googleStorageReady: storageReady,
+  };
+}
+
+export async function getGoogleAccessToken(workspace?: string): Promise<string> {
+  const values = runtimeEnv();
+  let refreshToken = values.GOOGLE_REFRESH_TOKEN;
+  if (workspace && values.GOOGLE_TOKEN_ENCRYPTION_KEY) {
+    try {
+      const row = await loadGoogleConnection(workspace);
+      if (row) refreshToken = await decryptRefreshToken(row.refreshTokenCiphertext, values.GOOGLE_TOKEN_ENCRYPTION_KEY);
+    } catch (error) {
+      if (!refreshToken) throw error;
+    }
+  }
+  if (
+    !values.GOOGLE_CLIENT_ID ||
+    !values.GOOGLE_CLIENT_SECRET ||
+    !refreshToken
+  ) {
+    throw new Error("Google OAuth credentials are incomplete.");
+  }
+
+  const body = new URLSearchParams({
+    client_id: values.GOOGLE_CLIENT_ID,
+    client_secret: values.GOOGLE_CLIENT_SECRET,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  });
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  const payload = (await response.json()) as {
+    access_token?: string;
+    error_description?: string;
+  };
+
+  if (!response.ok || !payload.access_token) {
+    throw new Error(payload.error_description || "Google OAuth refresh failed.");
+  }
+
+  return payload.access_token;
+}
+
+export function normalisePublicUrl(value: string): URL {
+  const candidate = /^https?:\/\//i.test(value.trim())
+    ? value.trim()
+    : `https://${value.trim()}`;
+  const url = new URL(candidate);
+
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error("Enter a public HTTP or HTTPS website.");
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  const blockedName =
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".internal");
+  const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  const blockedIpv4 = Boolean(
+    ipv4 &&
+      (() => {
+        const parts = ipv4.slice(1).map(Number);
+        return (
+          parts.some((part) => part > 255) ||
+          parts[0] === 0 ||
+          parts[0] === 10 ||
+          parts[0] === 127 ||
+          (parts[0] === 169 && parts[1] === 254) ||
+          (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+          (parts[0] === 192 && parts[1] === 168)
+        );
+      })(),
+  );
+  const blockedIpv6 = hostname === "::1" || hostname.startsWith("fc") || hostname.startsWith("fd") || hostname.startsWith("fe80:");
+
+  if (blockedName || blockedIpv4 || blockedIpv6) {
+    throw new Error("Private and local network addresses cannot be audited.");
+  }
+
+  url.hash = "";
+  return url;
+}

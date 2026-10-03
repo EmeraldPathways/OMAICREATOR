@@ -1,5 +1,6 @@
-import { db, vectorReady, type StoredPiece, type StoredFact, type Lesson } from "./db";
+import { db, hasDb, vectorReady, type StoredPiece, type StoredFact, type Lesson } from "./db";
 import { chatJSON } from "./openai";
+import type { BrandId } from "./brandProfiles";
 
 /* ----------------------------------------------------------- embeddings -- */
 
@@ -28,6 +29,11 @@ function toVectorLiteral(v: number[]): string {
   return `[${v.join(",")}]`;
 }
 
+function safeDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "date recorded in database" : date.toISOString().slice(0, 10);
+}
+
 /* ------------------------------------------------------------ retrieval -- */
 
 export interface KnowledgeEntry {
@@ -37,12 +43,22 @@ export interface KnowledgeEntry {
   source_url: string | null;
 }
 
+export interface BrandFact {
+  id: number;
+  fact_key: string;
+  label: string;
+  value: string;
+  status: "verified" | "disputed" | "retired";
+  note: string | null;
+}
+
 export interface LearnedContext {
   exemplars: StoredPiece[];
   facts: StoredFact[];
   lessons: Lesson[];
   expiredFacts: StoredFact[];
   knowledge: KnowledgeEntry[];
+  brandFacts: BrandFact[];
   mode: "similarity" | "recency" | "off";
 }
 
@@ -52,6 +68,7 @@ const EMPTY: LearnedContext = {
   lessons: [],
   expiredFacts: [],
   knowledge: [],
+  brandFacts: [],
   mode: "off",
 };
 
@@ -64,9 +81,10 @@ export const PERFORMANCE_SAFE_CATEGORIES = ["structure", "length", "cta", "frami
 
 export async function retrieve(
   brief: { channel: string; profession: string; topic: string },
-  apiKey: string
+  apiKey: string,
+  brandId: BrandId = "omega-financial",
 ): Promise<LearnedContext> {
-  if (!process.env.DATABASE_URL) return EMPTY;
+  if (!hasDb()) return EMPTY;
 
   try {
     const sql = db();
@@ -81,7 +99,8 @@ export async function retrieve(
         SELECT id, channel, format, profession, topic, final_text, was_edited,
                approved_by, approved_at
         FROM pieces
-        WHERE retired_at IS NULL
+        WHERE brand_id = ${brandId}
+          AND retired_at IS NULL
           AND channel = ${brief.channel}
           AND embedding IS NOT NULL
         ORDER BY embedding <=> ${lit}::vector
@@ -91,7 +110,8 @@ export async function retrieve(
         SELECT id, channel, format, profession, topic, final_text, was_edited,
                approved_by, approved_at
         FROM pieces
-        WHERE retired_at IS NULL
+        WHERE brand_id = ${brandId}
+          AND retired_at IS NULL
           AND channel = ${brief.channel}
           AND profession = ${brief.profession}
         ORDER BY approved_at DESC
@@ -106,7 +126,8 @@ export async function retrieve(
       facts = (await sql`
         SELECT id, claim, value, source_url, source_title, verified_at, expires_at
         FROM verified_facts
-        WHERE superseded = FALSE
+        WHERE brand_id = ${brandId}
+          AND superseded = FALSE
           AND expires_at > now()
           AND embedding IS NOT NULL
         ORDER BY embedding <=> ${lit}::vector
@@ -115,7 +136,8 @@ export async function retrieve(
       facts = (await sql`
         SELECT id, claim, value, source_url, source_title, verified_at, expires_at
         FROM verified_facts
-        WHERE superseded = FALSE AND expires_at > now()
+        WHERE brand_id = ${brandId}
+          AND superseded = FALSE AND expires_at > now()
         ORDER BY verified_at DESC
         LIMIT 6`) as unknown as StoredFact[];
     }
@@ -123,15 +145,21 @@ export async function retrieve(
     const expiredFacts = (await sql`
       SELECT id, claim, value, source_url, source_title, verified_at, expires_at
       FROM verified_facts
-      WHERE superseded = FALSE AND expires_at <= now()
+      WHERE brand_id = ${brandId}
+        AND superseded = FALSE AND expires_at <= now()
       ORDER BY expires_at DESC
       LIMIT 10`) as unknown as StoredFact[];
 
     const lessons = (await sql`
       SELECT id, scope, category, lesson, times_seen
-      FROM lessons
+      FROM lessons l
       WHERE active = TRUE
         AND (scope = 'all' OR scope = ${brief.channel} OR scope = ${brief.profession})
+        AND (${brandId} = 'omega-financial' AND (piece_id IS NULL OR EXISTS (
+          SELECT 1 FROM pieces p WHERE p.id = l.piece_id AND p.brand_id = 'omega-financial'
+        )) OR EXISTS (
+          SELECT 1 FROM pieces p WHERE p.id = l.piece_id AND p.brand_id = ${brandId}
+        ))
       ORDER BY times_seen DESC, created_at DESC
       LIMIT 12`) as unknown as Lesson[];
 
@@ -139,10 +167,18 @@ export async function retrieve(
       SELECT id, topic, body, source_url
       FROM knowledge
       WHERE active = TRUE
+        AND brand_id = ${brandId}
         AND profession = ${brief.profession}
         AND (expires_at IS NULL OR expires_at > now())
       ORDER BY added_at DESC
       LIMIT 10`) as unknown as KnowledgeEntry[];
+
+    const brandFacts = (await sql`
+      SELECT id, fact_key, label, value, status, note
+      FROM brand_facts
+      WHERE brand_id = ${brandId}
+      ORDER BY id
+      LIMIT 100`) as unknown as BrandFact[];
 
     return {
       exemplars,
@@ -150,6 +186,7 @@ export async function retrieve(
       lessons,
       expiredFacts,
       knowledge,
+      brandFacts,
       mode: vec ? "similarity" : "recency",
     };
   } catch {
@@ -162,6 +199,11 @@ export async function retrieve(
 export function learnedBlock(ctx: LearnedContext): string {
   if (ctx.mode === "off") return "";
   const parts: string[] = [];
+
+  if (ctx.brandFacts.length) {
+    parts.push(`DATABASE FACT BASE — this is the current editable state. Verified facts may be used; disputed and retired facts must not be stated:
+${ctx.brandFacts.map((f) => `- [${f.status.toUpperCase()}] ${f.fact_key}: ${f.label} — ${f.value}${f.note ? ` — NOTE: ${f.note}` : ""}`).join("\n")}`);
+  }
 
   if (ctx.lessons.length) {
     parts.push(`CORRECTIONS LEARNED FROM PREVIOUS APPROVED WORK
@@ -178,7 +220,7 @@ here and not in today's sources, do not guess it:
 ${ctx.facts
   .map(
     (f) =>
-      `- [V${f.id}] ${f.claim}: ${f.value}\n     Source: ${f.source_url}\n     Verified ${new Date(f.verified_at).toISOString().slice(0, 10)}, expires ${new Date(f.expires_at).toISOString().slice(0, 10)}`
+      `- [V${f.id}] ${f.claim}: ${f.value}\n     Source: ${f.source_url}\n     Verified ${safeDate(f.verified_at)}, expires ${safeDate(f.expires_at)}`
   )
   .join("\n")}`);
   }

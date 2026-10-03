@@ -1,5 +1,6 @@
 import { db, hasDb } from "./db";
 import { craftBlock, type CraftBrief } from "./prompts";
+import type { BrandId } from "./brandProfiles";
 
 /**
  * Gathers the craft inputs — approved exemplars, the advisor question bank, and
@@ -9,8 +10,10 @@ import { craftBlock, type CraftBrief } from "./prompts";
  */
 export async function gatherCraft(
   brief: CraftBrief,
-  interviewId?: number | null
+  interviewId?: number | null,
+  brandId: BrandId = "omega-financial",
 ): Promise<string> {
+  if (brandId !== "omega-financial") return "";
   if (!hasDb()) return craftBlock(brief);
 
   try {
@@ -18,7 +21,7 @@ export async function gatherCraft(
 
     const exemplars = (await sql`
       SELECT label, note, body FROM exemplars
-      WHERE active = TRUE AND channel = ${brief.channel}
+      WHERE brand_id = ${brandId} AND active = TRUE AND channel = ${brief.channel}
       ORDER BY added_at DESC LIMIT 2`) as unknown as {
       label: string;
       note: string | null;

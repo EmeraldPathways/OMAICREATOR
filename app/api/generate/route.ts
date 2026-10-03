@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { chatJSON, resolveOpenAIKey } from "@/lib/openai";
-import { buildDraftPrompt, knowledgeBlock, type Brief, type SourceDoc } from "@/lib/prompts";
+import { buildBrandDraftPrompt, buildDraftPrompt, knowledgeBlock, type Brief, type SourceDoc } from "@/lib/prompts";
 import { retrieve, learnedBlock } from "@/lib/learn";
 import { gatherCraft } from "@/lib/craftContext";
+import { authorizeBrandAccess } from "@/lib/brandAccess";
+import { getConfiguredBrandProfile } from "@/lib/brandProfileStore";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -20,6 +22,8 @@ interface Draft {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const access = await authorizeBrandAccess(body.brandId);
+    if (!access.ok) return access.response;
     const brief: Brief = body.brief;
     const sources: SourceDoc[] = body.sources || [];
 
@@ -31,12 +35,21 @@ export async function POST(req: Request) {
 
     // Pull in what the tool has learned: approved exemplars, still-valid
     // verified figures, and the corrections humans have made before.
-    const learnedCtx = await retrieve(brief, key);
-    const craft = await gatherCraft(brief, body.interviewId);
-    const context = [craft, learnedBlock(learnedCtx), knowledgeBlock(learnedCtx.knowledge)]
+    let profile = access.brandId === "omega-financial" ? undefined : await getConfiguredBrandProfile(access.brandId);
+    const learnedCtx = await retrieve(brief, key, access.brandId);
+    if (profile) profile = { ...profile, approvedFacts: [...profile.approvedFacts, ...learnedCtx.brandFacts.filter((fact) => fact.status === "verified").map((fact) => `${fact.fact_key}: ${fact.label} — ${fact.value}`)] };
+    const craft = await gatherCraft(brief, body.interviewId, access.brandId);
+    const referenceNotes = learnedCtx.knowledge.length
+      ? `REFERENCE NOTES FOR ${profile?.name || "Omega Financial"} — framing only, not evidence for factual claims:\n${learnedCtx.knowledge.map((entry) => `- ${entry.topic}: ${entry.body}${entry.source_url ? ` (${entry.source_url})` : ""}`).join("\n")}`
+      : "";
+    const knowledge = access.brandId === "omega-financial" ? knowledgeBlock(learnedCtx.knowledge) : referenceNotes;
+    const context = [craft, learnedBlock(learnedCtx), knowledge]
       .filter(Boolean)
       .join("\n\n");
-    const { system, user } = buildDraftPrompt(brief, sources, context);
+    const prompt = access.brandId === "omega-financial"
+      ? buildDraftPrompt(brief, sources, context)
+      : buildBrandDraftPrompt(access.brandId, brief, sources, context, profile);
+    const { system, user } = prompt;
 
     const draft = await chatJSON<Draft>({ system, user, apiKey: key, model: body.model, temperature: 0.4 });
 

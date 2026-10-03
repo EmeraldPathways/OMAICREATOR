@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { chatJSON, resolveOpenAIKey } from "@/lib/openai";
-import { buildSeriesArcPrompt, buildSeriesPartPrompt, type CraftBrief } from "@/lib/prompts";
+import { buildBrandOperationPrompt, buildSeriesArcPrompt, buildSeriesPartPrompt, type CraftBrief } from "@/lib/prompts";
 import { gatherCraft } from "@/lib/craftContext";
+import { authorizeBrandAccess } from "@/lib/brandAccess";
+import { getConfiguredBrandProfile } from "@/lib/brandProfileStore";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -14,14 +16,21 @@ interface Part {
 export async function POST(req: Request) {
   try {
     const b = await req.json();
+    const access = await authorizeBrandAccess(b.brandId);
+    if (!access.ok) return access.response;
     const brief: CraftBrief = b.brief;
     const count = Math.min(Math.max(Number(b.count) || 4, 2), 7);
     if (!brief?.topic?.trim()) {
       return NextResponse.json({ error: "Give the sequence a topic." }, { status: 400 });
     }
     const key = resolveOpenAIKey(b.runtimeKey);
-    const craft = await gatherCraft(brief, b.interviewId);
-    const { system, user } = buildSeriesArcPrompt(brief, count, craft);
+    const craft = await gatherCraft(brief, b.interviewId, access.brandId);
+    const prompt = access.brandId === "omega-financial"
+      ? buildSeriesArcPrompt(brief, count, craft)
+      : buildBrandOperationPrompt(await getConfiguredBrandProfile(access.brandId), "content series arc",
+          `Plan a distinct ${count}-part content sequence with a clear progression. Return JSON only: {arc,parts:[{n,title,purpose,adds,holds_back,cta}]}.`,
+          { brief, count });
+    const { system, user } = prompt;
     const out = await chatJSON<{ arc: string; parts: Part[] }>({
       system, user, apiKey: key, model: b.model, temperature: 0.7,
     });
@@ -41,6 +50,8 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const b = await req.json();
+    const access = await authorizeBrandAccess(b.brandId);
+    if (!access.ok) return access.response;
     const brief: CraftBrief = b.brief;
     const part: Part = b.part;
     const previous: { n: number; title: string; body: string }[] = b.previous || [];
@@ -49,8 +60,13 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Which part should it write?" }, { status: 400 });
     }
     const key = resolveOpenAIKey(b.runtimeKey);
-    const craft = await gatherCraft(brief, b.interviewId);
-    const { system, user } = buildSeriesPartPrompt(brief, part, b.arc || "", previous, craft);
+    const craft = await gatherCraft(brief, b.interviewId, access.brandId);
+    const prompt = access.brandId === "omega-financial"
+      ? buildSeriesPartPrompt(brief, part, b.arc || "", previous, craft)
+      : buildBrandOperationPrompt(await getConfiguredBrandProfile(access.brandId), `content series part ${part.n}`,
+          "Write this part without adding unsupported claims. Return JSON only with title, content, variants, claims, needs, and notes.",
+          { brief, part, arc: b.arc || "", previous });
+    const { system, user } = prompt;
     const draft = await chatJSON<Record<string, unknown>>({
       system, user, apiKey: key, model: b.model, temperature: 0.4,
     });

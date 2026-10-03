@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { db, hasDb } from "@/lib/db";
+import { authorizeBrandAccess } from "@/lib/brandAccess";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 /** The review queue, ordered by risk then by deadline. */
-export async function GET() {
+export async function GET(request: Request) {
+  const access = await authorizeBrandAccess(new URL(request.url).searchParams.get("brandId") ?? undefined);
+  if (!access.ok) return access.response;
   if (!hasDb()) return NextResponse.json({ connected: false, items: [] });
   try {
     const sql = db();
@@ -13,11 +16,11 @@ export async function GET() {
       SELECT p.id, p.channel, p.format, p.profession, p.topic, p.status,
              p.risk_score, p.due_on, p.approved_by, p.approver_role, p.approved_at,
              p.campaign_id, c.name AS campaign_name,
-             left(p.final_text, 220) AS excerpt,
+             substr(p.final_text, 1, 220) AS excerpt,
              (SELECT count(*)::int FROM versions v WHERE v.piece_id = p.id) AS version_count
       FROM pieces p
-      LEFT JOIN campaigns c ON c.id = p.campaign_id
-      WHERE p.retired_at IS NULL AND p.status <> 'approved'
+      LEFT JOIN campaigns c ON c.id = p.campaign_id AND c.brand_id = p.brand_id
+      WHERE p.brand_id = ${access.brandId} AND p.retired_at IS NULL AND p.status <> 'approved'
       ORDER BY p.risk_score DESC NULLS LAST, p.due_on ASC NULLS LAST, p.approved_at DESC
       LIMIT 50`;
     return NextResponse.json({ connected: true, items });
@@ -30,7 +33,10 @@ export async function GET() {
 /** Move a piece through the workflow, writing an immutable version row. */
 export async function POST(req: Request) {
   try {
-    const { id, status, actor, role, note } = await req.json();
+    const body = await req.json();
+    const access = await authorizeBrandAccess(body.brandId);
+    if (!access.ok) return access.response;
+    const { id, status, actor, role, note } = body;
     if (!id || !status || !actor?.trim() || !role) {
       return NextResponse.json(
         { error: "Changing status needs the piece, the new status, and who is doing it in what role." },
@@ -45,7 +51,7 @@ export async function POST(req: Request) {
     }
 
     const sql = db();
-    const cur = await sql`SELECT final_text, risk_score FROM pieces WHERE id = ${id}`;
+    const cur = await sql`SELECT final_text, risk_score FROM pieces WHERE id = ${id} AND brand_id = ${access.brandId}`;
     if (!cur.length) return NextResponse.json({ error: "No such piece." }, { status: 404 });
 
     const n = await sql`SELECT coalesce(max(version_no), 0) + 1 AS next FROM versions WHERE piece_id = ${id}`;
@@ -56,7 +62,7 @@ export async function POST(req: Request) {
               ${actor}, ${role}, ${cur[0].risk_score},
               ${JSON.stringify({ note: note || null })}::jsonb)`;
 
-    await sql`UPDATE pieces SET status = ${status} WHERE id = ${id}`;
+    await sql`UPDATE pieces SET status = ${status} WHERE id = ${id} AND brand_id = ${access.brandId}`;
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not update the piece.";

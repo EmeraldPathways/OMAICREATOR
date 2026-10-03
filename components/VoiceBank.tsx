@@ -7,7 +7,7 @@ import { CAREER_STAGES } from "@/lib/craft";
 interface Ex { id: number | string; channel: string; label: string; note: string | null; body: string; seeded?: boolean; added_by?: string }
 interface Qu { id: number; profession: string; stage: string | null; kind: string; text: string; context: string | null; heard_from: string | null; times_heard: number }
 
-export default function VoiceBank() {
+export default function VoiceBank({ brandId = "omega-financial", channels = CHANNELS.map(({ id, name }) => ({ id, name })) }: { brandId?: string; channels?: { id: string; name: string }[] }) {
   const [tab, setTab] = useState<"exemplars" | "questions">("exemplars");
   const [exemplars, setExemplars] = useState<Ex[]>([]);
   const [questions, setQuestions] = useState<Qu[]>([]);
@@ -15,7 +15,7 @@ export default function VoiceBank() {
   const [msg, setMsg] = useState("");
   const [open, setOpen] = useState<string | null>(null);
 
-  const [eChannel, setEChannel] = useState("email");
+  const [eChannel, setEChannel] = useState(channels[0]?.id || "email");
   const [eLabel, setELabel] = useState("");
   const [eNote, setENote] = useState("");
   const [eBody, setEBody] = useState("");
@@ -30,14 +30,14 @@ export default function VoiceBank() {
 
   async function load() {
     try {
-      const res = await fetch("/api/voicebank");
+      const res = await fetch(`/api/voicebank?brandId=${encodeURIComponent(brandId)}`);
       const j = await res.json();
       setConnected(j.connected !== false);
       setExemplars(j.exemplars || []);
       setQuestions(j.questions || []);
     } catch { /* seeded exemplars still render */ }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); setEChannel(channels[0]?.id || "email"); if (brandId !== "omega-financial") setTab("exemplars"); }, [brandId]);
 
   async function addExemplar() {
     if (!eLabel.trim() || !eBody.trim() || !eBy.trim()) {
@@ -45,7 +45,7 @@ export default function VoiceBank() {
     }
     const res = await fetch("/api/voicebank", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "exemplar", channel: eChannel, label: eLabel, note: eNote, body: eBody, addedBy: eBy }),
+      body: JSON.stringify({ brandId, kind: "exemplar", channel: eChannel, label: eLabel, note: eNote, body: eBody, addedBy: eBy }),
     });
     const j = await res.json();
     if (!res.ok) { setMsg(j.error); return; }
@@ -56,7 +56,7 @@ export default function VoiceBank() {
     if (!qText.trim()) { setMsg("What is the question?"); return; }
     const res = await fetch("/api/voicebank", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profession: qProf, stage: qStage, qkind: qKind, text: qText, context: qContext, heardFrom: qFrom }),
+      body: JSON.stringify({ brandId, profession: qProf, stage: qStage, qkind: qKind, text: qText, context: qContext, heardFrom: qFrom }),
     });
     const j = await res.json();
     if (!res.ok) { setMsg(j.error); return; }
@@ -68,7 +68,7 @@ export default function VoiceBank() {
   async function remove(id: number | string, kind: string) {
     await fetch("/api/voicebank", {
       method: "DELETE", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, kind }),
+      body: JSON.stringify({ brandId, id, kind }),
     });
     load();
   }
@@ -81,9 +81,9 @@ export default function VoiceBank() {
         <button className={tab === "exemplars" ? "chip on" : "chip"} onClick={() => setTab("exemplars")}>
           Style exemplars<small>{exemplars.length} pieces</small>
         </button>
-        <button className={tab === "questions" ? "chip on" : "chip"} onClick={() => setTab("questions")}>
+        {brandId === "omega-financial" && <button className={tab === "questions" ? "chip on" : "chip"} onClick={() => setTab("questions")}>
           Question bank<small>{questions.length} recorded</small>
-        </button>
+        </button>}
       </div>
 
       {tab === "exemplars" && (

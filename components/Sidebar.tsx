@@ -82,6 +82,16 @@ const ICONS: Record<string, React.ReactNode> = {
       <path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1 4.7 4.7" />
     </svg>
   ),
+  rankscope: (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M3 15.5 7 11l3 2.5 6-8" /><path d="M12.5 5.5H16v3.5" />
+    </svg>
+  ),
+  reviewDesk: (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M3 4.5h14v9H9l-4 3v-3H3z" /><path d="M6 7.5h8M6 10.5h5" />
+    </svg>
+  ),
 };
 
 interface Props {
@@ -89,18 +99,23 @@ interface Props {
   onToggle: () => void;
   view: string;
   onSelect: (view: string) => void;
+  brandId?: string;
+  brandName?: string;
+  channels?: { id: string; name: string; blurb: string }[];
+  ownerAccess?: boolean;
 }
 
-export default function Sidebar({ collapsed, onToggle, view, onSelect }: Props) {
+export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId = "omega-financial", brandName = "Omega Financial", channels = CHANNELS, ownerAccess = false }: Props) {
+  const isOmega = brandId === "omega-financial";
   return (
     <aside className={collapsed ? "sidebar collapsed" : "sidebar"}>
       <div className="sidebar-head">
         <div className="mark" aria-hidden="true">
-          Ω
+          {brandName.slice(0, 1)}
         </div>
         <div className="wordmark">
           Content Studio
-          <span>Omega Financial</span>
+          <span>{brandName}</span>
         </div>
         <button
           className="collapse-btn"
@@ -120,14 +135,14 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect }: Props) 
 
       <nav className="nav">
         <div className="nav-label">Write for</div>
-        {CHANNELS.map((c) => (
+        {channels.map((c) => (
           <button
             key={c.id}
             className={view === c.id ? "nav-item active" : "nav-item"}
             onClick={() => onSelect(c.id)}
             title={collapsed ? c.name : undefined}
           >
-            <span className="nav-icon">{ICONS[c.id]}</span>
+            <span className="nav-icon">{ICONS[c.id] || ICONS.website}</span>
             <span className="nav-text">
               <b>{c.name}</b>
               <i>{c.blurb}</i>
@@ -135,7 +150,8 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect }: Props) 
           </button>
         ))}
 
-        <div className="nav-label">Craft</div>
+        {isOmega && <div className="nav-label">Craft</div>}
+        {isOmega && <>
         <button
           className={view === "interview" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("interview")}
@@ -152,6 +168,7 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect }: Props) 
           <span className="nav-icon">{ICONS.voice}</span>
           <span className="nav-text"><b>Voice bank</b><i>Exemplars and questions</i></span>
         </button>
+        </>}
 
         <div className="nav-label">Manage</div>
         <button
@@ -169,6 +186,9 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect }: Props) 
         >
           <span className="nav-icon">{ICONS.queue}</span>
           <span className="nav-text"><b>Review queue</b><i>Worst risk first</i></span>
+        </button>
+        <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={() => onSelect("activity")} title={collapsed ? "Activity" : undefined}>
+          <span className="nav-icon">{ICONS.queue}</span><span className="nav-text"><b>Activity</b><i>Recent changes</i></span>
         </button>
 
         <div className="nav-label">Reference</div>
@@ -194,22 +214,28 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect }: Props) 
             <i>What the tool has learned</i>
           </span>
         </button>
-        <button
+        <button className={view === "brand-settings" ? "nav-item active" : "nav-item"} onClick={() => onSelect("brand-settings")} disabled={!ownerAccess} title={collapsed ? "Brand settings" : undefined}>
+          <span className="nav-icon">{ICONS.setup}</span><span className="nav-text"><b>Brand settings</b><i>{ownerAccess ? "Voice, facts and visuals" : "Owner access required"}</i></span>
+        </button>
+        <button className={view === "images" ? "nav-item active" : "nav-item"} onClick={() => onSelect("images")} disabled={!ownerAccess} title={collapsed ? "Image studio" : undefined}>
+          <span className="nav-icon">{ICONS.website}</span><span className="nav-text"><b>Image studio</b><i>{ownerAccess ? "Create campaign visuals" : "Owner access required"}</i></span>
+        </button>
+        {isOmega && <button
           className={view === "knowledge" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("knowledge")}
           title={collapsed ? "Profession knowledge" : undefined}
         >
           <span className="nav-icon">{ICONS.knowledge}</span>
           <span className="nav-text"><b>Profession knowledge</b><i>The client&apos;s world</i></span>
-        </button>
-        <button
+        </button>}
+        {isOmega && <button
           className={view === "estate" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("estate")}
           title={collapsed ? "Estate sweep" : undefined}
         >
           <span className="nav-icon">{ICONS.estate}</span>
           <span className="nav-text"><b>Estate sweep</b><i>Scan what is live</i></span>
-        </button>
+        </button>}
         <button
           className={view === "setup" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("setup")}
@@ -222,6 +248,17 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect }: Props) 
           </span>
         </button>
       </nav>
+
+      <div className="sidebar-workspaces" aria-label="Connected workspaces">
+        <button className={view === "review-desk" ? "nav-item active" : "nav-item"} onClick={() => onSelect("review-desk")} disabled={!ownerAccess} title={collapsed ? "Review Desk" : undefined}>
+          <span className="nav-icon">{ICONS.reviewDesk}</span>
+          <span className="nav-text"><b>Review Desk</b><i>{ownerAccess ? "Google business reviews" : "Owner access required"}</i></span>
+        </button>
+        <button className={view === "rankscope" ? "nav-item active" : "nav-item"} onClick={() => onSelect("rankscope")} disabled={!ownerAccess} title={collapsed ? "RankScope" : undefined}>
+          <span className="nav-icon">{ICONS.rankscope}</span>
+          <span className="nav-text"><b>RankScope</b><i>{ownerAccess ? "SEO workspace" : "Owner access required"}</i></span>
+        </button>
+      </div>
 
       <div className="sidebar-foot">
         <p>

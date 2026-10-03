@@ -7,21 +7,24 @@ export interface ChatOpts {
 }
 
 export async function chatJSON<T>(opts: ChatOpts): Promise<T> {
+  const model = opts.model || process.env.OPENAI_MODEL || "gpt-5.6-luna";
+  const body: Record<string, unknown> = {
+    model,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: opts.system },
+      { role: "user", content: opts.user },
+    ],
+  };
+  // GPT-5.6 Luna only accepts its default temperature.
+  if (!model.startsWith("gpt-5.6")) body.temperature = opts.temperature ?? 0.4;
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${opts.apiKey}`,
     },
-    body: JSON.stringify({
-      model: opts.model || process.env.OPENAI_MODEL || "gpt-4o",
-      temperature: opts.temperature ?? 0.4,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: opts.system },
-        { role: "user", content: opts.user },
-      ],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

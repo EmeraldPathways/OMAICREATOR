@@ -19,7 +19,7 @@ interface Campaign {
 
 interface PlanRow { channel: string; channelName: string; format: string; role: string }
 
-export default function Campaigns({ onUse }: { onUse: (c: Campaign) => void }) {
+export default function Campaigns({ onUse, onCreateImage, brandId = "omega-financial", audiences = [] }: { onUse: (c: Campaign) => void; onCreateImage?: (c: Campaign) => void; brandId?: string; audiences?: string[] }) {
   const [list, setList] = useState<Campaign[]>([]);
   const [connected, setConnected] = useState(true);
   const [busy, setBusy] = useState(true);
@@ -38,13 +38,13 @@ export default function Campaigns({ onUse }: { onUse: (c: Campaign) => void }) {
   async function load() {
     setBusy(true);
     try {
-      const res = await fetch("/api/campaigns");
+      const res = await fetch(`/api/campaigns?brandId=${encodeURIComponent(brandId)}`);
       const j = await res.json();
       setConnected(j.connected !== false);
       setList(j.campaigns || []);
     } finally { setBusy(false); }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { setProfession(brandId === "omega-financial" ? "gp" : audiences[0] || ""); load(); }, [brandId]);
 
   async function create() {
     if (!name.trim()) { setMsg("Give the campaign a name."); return; }
@@ -52,7 +52,7 @@ export default function Campaigns({ onUse }: { onUse: (c: Campaign) => void }) {
     const res = await fetch("/api/campaigns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, profession, layer, objective, theme, brief, startsOn: startsOn || null, endsOn: endsOn || null }),
+      body: JSON.stringify({ brandId, name, profession, layer, objective, theme, brief, startsOn: startsOn || null, endsOn: endsOn || null }),
     });
     const j = await res.json();
     if (!res.ok) { setMsg(j.error); return; }
@@ -65,7 +65,7 @@ export default function Campaigns({ onUse }: { onUse: (c: Campaign) => void }) {
     const res = await fetch("/api/campaigns", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ layer: c.layer }),
+      body: JSON.stringify({ brandId, layer: c.layer }),
     });
     const j = await res.json();
     setPlan({ id: c.id, rows: j.plan || [] });
@@ -87,12 +87,7 @@ export default function Campaigns({ onUse }: { onUse: (c: Campaign) => void }) {
       {msg && <div className="alert">{msg}</div>}
 
       <div className="prose" style={{ marginBottom: 16 }}>
-        <p>
-          A campaign holds the brief once, so the whole asset set inherits it.
-          The funnel layer is deliberate: the soft layer educates and carries no
-          hard CTA, the hard layer drives the action. Keeping them apart is the
-          point — collapsing them is how educational content turns into ads.
-        </p>
+        <p>A campaign holds the brief once, so every piece for {brandId === "omega-financial" ? "Omega Financial" : "this brand"} can inherit it.</p>
       </div>
 
       <section className="panel">
@@ -110,11 +105,11 @@ export default function Campaigns({ onUse }: { onUse: (c: Campaign) => void }) {
           </div>
           <div className="field">
             <label>Audience</label>
-            <div className="chips">
+            {brandId === "omega-financial" ? <div className="chips">
               {PROFESSIONS.map((p) => (
                 <button key={p.id} className={profession === p.id ? "chip on" : "chip"} onClick={() => setProfession(p.id)}>{p.name}</button>
               ))}
-            </div>
+            </div> : <select value={profession} onChange={(e) => setProfession(e.target.value)}><option value="">Choose an audience</option>{audiences.map((audience) => <option key={audience} value={audience}>{audience}</option>)}</select>}
           </div>
           <div className="field">
             <label>Funnel layer</label>
@@ -169,6 +164,7 @@ export default function Campaigns({ onUse }: { onUse: (c: Campaign) => void }) {
             </div>
             <div className="btn-row">
               <button className="btn btn-primary" onClick={() => onUse(c)}>Write for this campaign</button>
+              {onCreateImage && <button className="btn btn-secondary" onClick={() => onCreateImage(c)}>Create matching image</button>}
               <button className="btn-quiet" onClick={() => buildPlan(c)}>
                 {plan?.id === c.id ? "Hide suggested set" : "Suggested asset set"}
               </button>

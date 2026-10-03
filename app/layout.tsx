@@ -1,20 +1,24 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./rankscope/rankscope.css";
 
 export const metadata: Metadata = {
   title: "Omega Content Studio",
-  description:
-    "Profession-specific content drafting with source grounding and a compliance audit for Omega Financial Management.",
+  description: "Omega Financial Management content drafting, campaign planning and compliance workspace.",
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
-    <html lang="en-IE">
-      <body>{children}</body>
+    <html lang="en">
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

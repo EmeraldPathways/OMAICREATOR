@@ -32,6 +32,24 @@ export const PRIORITY_DOMAINS = [
   "hse.ie",
 ];
 
+const IRISH_NEWS_DOMAINS = [
+  "irishtimes.com", "rte.ie", "independent.ie", "businesspost.ie",
+  "irishexaminer.com", "breakingnews.ie", "thejournal.ie", "newstalk.com",
+  "agriland.ie", "farmersjournal.ie", "irishmedicaltimes.com",
+  "medicalindependent.ie", "hse.ie", "gov.ie", "revenue.ie", "centralbank.ie",
+];
+
+function irelandQuery(query: string, news: boolean) {
+  return `${query.trim()} ${news ? "Irish news Ireland" : "Ireland Irish market"}`;
+}
+
+function isIrish(url: string) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    return host.endsWith(".ie") || IRISH_NEWS_DOMAINS.some((d) => host.endsWith(d));
+  } catch { return false; }
+}
+
 function rank(results: SearchResult[]): SearchResult[] {
   return [...results].sort((a, b) => {
     const score = (r: SearchResult) => {
@@ -62,7 +80,7 @@ async function tavily(
       Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
-      query,
+      query: irelandQuery(query, news),
       search_depth: "advanced",
       topic: news ? "news" : "general",
       max_results: 8,
@@ -92,7 +110,7 @@ async function serper(
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-API-KEY": key },
-    body: JSON.stringify({ q: query, gl: "ie", hl: "en", num: 10 }),
+    body: JSON.stringify({ q: irelandQuery(query, news), gl: "ie", hl: "en-IE", location: "Ireland", num: 10 }),
   });
   if (!res.ok) throw new Error(`Serper ${res.status}: ${await res.text()}`);
   const data = await res.json();
@@ -114,7 +132,7 @@ async function brave(
   const base = news
     ? "https://api.search.brave.com/res/v1/news/search"
     : "https://api.search.brave.com/res/v1/web/search";
-  const url = `${base}?q=${encodeURIComponent(query)}&country=ie&count=10`;
+  const url = `${base}?q=${encodeURIComponent(irelandQuery(query, news))}&country=ie&count=10`;
   const res = await fetch(url, {
     headers: { Accept: "application/json", "X-Subscription-Token": key },
   });
@@ -140,14 +158,15 @@ export async function runSearch(
 ): Promise<SearchResult[]> {
   const fn =
     provider === "serper" ? serper : provider === "brave" ? brave : tavily;
-  return rank(await fn(query, key, news));
+  const results = await fn(query, key, news);
+  return rank(news ? results.filter((r) => isIrish(r.url)) : results);
 }
 
 export function resolveSearchKey(runtimeKey?: string): {
   key: string;
   provider: Provider;
 } {
-  const provider = (process.env.SEARCH_PROVIDER || "tavily") as Provider;
+  const provider = (process.env.SEARCH_PROVIDER || "serper") as Provider;
   const envKey = process.env.SEARCH_API_KEY;
   if (envKey) return { key: envKey, provider };
   if (process.env.ALLOW_RUNTIME_KEYS === "true" && runtimeKey)
