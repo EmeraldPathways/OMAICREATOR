@@ -73,7 +73,7 @@ export default function LoginPage() {
               </button>
             </div>
             {message && <p className="auth-error" role="alert">{message}</p>}
-            <button className="auth-submit" type="submit" disabled={busy || configured !== true}>
+            <button className="auth-submit" type="submit" disabled={busy || configured !== true || !email.trim() || !password}>
               {busy ? "Signing in…" : "Sign in"}
             </button>
           </form>
