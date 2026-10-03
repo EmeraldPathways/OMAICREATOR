@@ -54,7 +54,27 @@ export default function Knowledge({ brandId = "omega-financial", audiences = [] 
       if (j.error) setMsg(j.error);
     } finally { setBusy(false); }
   }
-  useEffect(() => { setFilter(brandId === "omega-financial" ? "gp" : audiences[0] || "Customers"); load(); }, [brandId]);
+  useEffect(() => {
+    let active = true;
+    async function loadInitial() {
+      try {
+        const response = await fetch(`/api/knowledge?brandId=${encodeURIComponent(brandId)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Profession knowledge could not be loaded.");
+        if (active) {
+          setConnected(data.connected !== false);
+          setEntries(data.entries || []);
+          if (data.error) setMsg(data.error);
+        }
+      } catch (error) {
+        if (active) setMsg(error instanceof Error ? error.message : "Profession knowledge could not be loaded.");
+      } finally {
+        if (active) setBusy(false);
+      }
+    }
+    void loadInitial();
+    return () => { active = false; };
+  }, [brandId]);
 
   async function add() {
     if (!topic.trim() || !body.trim() || !addedBy.trim()) {

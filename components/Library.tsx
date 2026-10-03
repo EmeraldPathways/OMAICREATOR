@@ -121,7 +121,7 @@ export default function Library({ onUsePack, brandId = "omega-financial", channe
   const [tab, setTab] = useState<"packs" | "facts" | "lessons" | "pieces">(brandId === "omega-financial" ? "packs" : "facts");
   const [repurposing, setRepurposing] = useState<number | null>(null);
   const [repurposed, setRepurposed] = useState<{ id: number; content: string; needs: string[]; dropped: string[] } | null>(null);
-  const [target, setTarget] = useState("linkedin:short");
+  const [target, setTarget] = useState(`${channels[0]?.id || "email"}:${brandId === "omega-financial" ? "short" : "single post"}`);
   const [editing, setEditing] = useState<number | null>(null);
   const [editClaim, setEditClaim] = useState("");
   const [editValue, setEditValue] = useState("");
@@ -148,9 +148,20 @@ export default function Library({ onUsePack, brandId = "omega-financial", channe
   }
 
   useEffect(() => {
-    setTab(brandId === "omega-financial" ? "packs" : "facts");
-    setTarget(`${channels[0]?.id || "email"}:${brandId === "omega-financial" ? "short" : "single post"}`);
-    load();
+    let active = true;
+    async function loadInitial() {
+      try {
+        const response = await fetch(`/api/library?brandId=${encodeURIComponent(brandId)}`);
+        const result = await response.json();
+        if (active) setData(result);
+      } catch {
+        if (active) setData({ connected: false });
+      } finally {
+        if (active) setBusy(false);
+      }
+    }
+    void loadInitial();
+    return () => { active = false; };
   }, [brandId]);
 
   async function setupSchema() {

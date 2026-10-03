@@ -94,7 +94,7 @@ export async function POST(req: Request) {
     }
 
     // Only an edited piece teaches anything.
-    let learned: string[] = [];
+    const learned: string[] = [];
     if (wasEdited && access.brandId === "omega-financial") {
       const lessons = await extractLessons(aiDraft, finalText, brief, key, body.model);
       for (const l of lessons) {

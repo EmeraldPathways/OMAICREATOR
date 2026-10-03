@@ -27,12 +27,20 @@ export default function Estate() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
-  async function load() {
-    const res = await fetch("/api/estate");
-    const j = await res.json();
-    if (j.findings?.length) setFindings(j.findings);
-  }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const response = await fetch("/api/estate");
+        const data = await response.json();
+        if (active && data.findings?.length) setFindings(data.findings);
+      } catch {
+        if (active) setMsg("Saved scan findings could not be loaded.");
+      }
+    }
+    void load();
+    return () => { active = false; };
+  }, []);
 
   async function scan() {
     setBusy(true); setMsg(""); setErrors([]);

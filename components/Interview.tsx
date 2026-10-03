@@ -21,14 +21,18 @@ export default function Interview({ onUse }: { onUse: (i: Saved) => void }) {
   const [msg, setMsg] = useState("");
   const [id, setId] = useState<number | null>(null);
 
-  async function load() {
-    try {
-      const res = await fetch("/api/interview");
-      const j = await res.json();
-      setSaved(j.interviews || []);
-    } catch { /* the list is a convenience */ }
-  }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const response = await fetch("/api/interview");
+        const data = await response.json();
+        if (active) setSaved(data.interviews || []);
+      } catch { /* the list is a convenience */ }
+    }
+    void load();
+    return () => { active = false; };
+  }, []);
 
   async function makeQuestions() {
     if (!topic.trim()) { setMsg("What is the interview about?"); return; }

@@ -95,6 +95,8 @@ const ICONS: Record<string, React.ReactNode> = {
 };
 
 interface Props {
+  id?: string;
+  mobileOpen?: boolean;
   collapsed: boolean;
   onToggle: () => void;
   view: string;
@@ -105,10 +107,10 @@ interface Props {
   ownerAccess?: boolean;
 }
 
-export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId = "omega-financial", brandName = "Omega Financial", channels = CHANNELS, ownerAccess = false }: Props) {
+export default function Sidebar({ id, mobileOpen = false, collapsed, onToggle, view, onSelect, brandId = "omega-financial", brandName = "Omega Financial", channels = CHANNELS, ownerAccess = false }: Props) {
   const isOmega = brandId === "omega-financial";
   return (
-    <aside className={collapsed ? "sidebar collapsed" : "sidebar"}>
+    <aside id={id} className={`sidebar${collapsed ? " collapsed" : ""}${mobileOpen ? " mobile-open" : ""}`}>
       <div className="sidebar-head">
         <div className="mark" aria-hidden="true">
           {brandName.slice(0, 1)}
@@ -120,7 +122,8 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         <button
           className="collapse-btn"
           onClick={onToggle}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={mobileOpen ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-controls={id}
           aria-expanded={!collapsed}
         >
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -133,13 +136,15 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         </button>
       </div>
 
-      <nav className="nav">
+      <nav className="nav" aria-label="Content studio sections">
         <div className="nav-label">Write for</div>
         {channels.map((c) => (
           <button
             key={c.id}
             className={view === c.id ? "nav-item active" : "nav-item"}
             onClick={() => onSelect(c.id)}
+            aria-label={collapsed ? c.name : undefined}
+            aria-current={view === c.id ? "page" : undefined}
             title={collapsed ? c.name : undefined}
           >
             <span className="nav-icon">{ICONS[c.id] || ICONS.website}</span>
@@ -155,6 +160,8 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         <button
           className={view === "interview" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("interview")}
+          aria-label={collapsed ? "Advisor interview" : undefined}
+          aria-current={view === "interview" ? "page" : undefined}
           title={collapsed ? "Advisor interview" : undefined}
         >
           <span className="nav-icon">{ICONS.interview}</span>
@@ -163,6 +170,8 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         <button
           className={view === "voice" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("voice")}
+          aria-label={collapsed ? "Voice bank" : undefined}
+          aria-current={view === "voice" ? "page" : undefined}
           title={collapsed ? "Voice bank" : undefined}
         >
           <span className="nav-icon">{ICONS.voice}</span>
@@ -174,6 +183,8 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         <button
           className={view === "campaigns" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("campaigns")}
+          aria-label={collapsed ? "Campaigns" : undefined}
+          aria-current={view === "campaigns" ? "page" : undefined}
           title={collapsed ? "Campaigns" : undefined}
         >
           <span className="nav-icon">{ICONS.campaigns}</span>
@@ -182,12 +193,14 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         <button
           className={view === "queue" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("queue")}
+          aria-label={collapsed ? "Review queue" : undefined}
+          aria-current={view === "queue" ? "page" : undefined}
           title={collapsed ? "Review queue" : undefined}
         >
           <span className="nav-icon">{ICONS.queue}</span>
           <span className="nav-text"><b>Review queue</b><i>Worst risk first</i></span>
         </button>
-        <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={() => onSelect("activity")} title={collapsed ? "Activity" : undefined}>
+        <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={() => onSelect("activity")} aria-label={collapsed ? "Activity" : undefined} aria-current={view === "activity" ? "page" : undefined} title={collapsed ? "Activity" : undefined}>
           <span className="nav-icon">{ICONS.queue}</span><span className="nav-text"><b>Activity</b><i>Recent changes</i></span>
         </button>
 
@@ -195,6 +208,8 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         <button
           className={view === "facts" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("facts")}
+          aria-label={collapsed ? "Fact base" : undefined}
+          aria-current={view === "facts" ? "page" : undefined}
           title={collapsed ? "Fact base" : undefined}
         >
           <span className="nav-icon">{ICONS.facts}</span>
@@ -206,6 +221,8 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         <button
           className={view === "library" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("library")}
+          aria-label={collapsed ? "Library" : undefined}
+          aria-current={view === "library" ? "page" : undefined}
           title={collapsed ? "Library" : undefined}
         >
           <span className="nav-icon">{ICONS.library}</span>
@@ -214,15 +231,17 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
             <i>What the tool has learned</i>
           </span>
         </button>
-        <button className={view === "brand-settings" ? "nav-item active" : "nav-item"} onClick={() => onSelect("brand-settings")} disabled={!ownerAccess} title={collapsed ? "Brand settings" : undefined}>
+        <button className={view === "brand-settings" ? "nav-item active" : "nav-item"} onClick={() => onSelect("brand-settings")} aria-label={collapsed ? "Brand settings" : undefined} aria-current={view === "brand-settings" ? "page" : undefined} disabled={!ownerAccess} title={collapsed ? "Brand settings" : undefined}>
           <span className="nav-icon">{ICONS.setup}</span><span className="nav-text"><b>Brand settings</b><i>{ownerAccess ? "Voice, facts and visuals" : "Owner access required"}</i></span>
         </button>
-        <button className={view === "images" ? "nav-item active" : "nav-item"} onClick={() => onSelect("images")} disabled={!ownerAccess} title={collapsed ? "Image studio" : undefined}>
+        <button className={view === "images" ? "nav-item active" : "nav-item"} onClick={() => onSelect("images")} aria-label={collapsed ? "Image studio" : undefined} aria-current={view === "images" ? "page" : undefined} disabled={!ownerAccess} title={collapsed ? "Image studio" : undefined}>
           <span className="nav-icon">{ICONS.website}</span><span className="nav-text"><b>Image studio</b><i>{ownerAccess ? "Create campaign visuals" : "Owner access required"}</i></span>
         </button>
         {isOmega && <button
           className={view === "knowledge" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("knowledge")}
+          aria-label={collapsed ? "Profession knowledge" : undefined}
+          aria-current={view === "knowledge" ? "page" : undefined}
           title={collapsed ? "Profession knowledge" : undefined}
         >
           <span className="nav-icon">{ICONS.knowledge}</span>
@@ -231,6 +250,8 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         {isOmega && <button
           className={view === "estate" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("estate")}
+          aria-label={collapsed ? "Estate sweep" : undefined}
+          aria-current={view === "estate" ? "page" : undefined}
           title={collapsed ? "Estate sweep" : undefined}
         >
           <span className="nav-icon">{ICONS.estate}</span>
@@ -239,6 +260,8 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         <button
           className={view === "setup" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("setup")}
+          aria-label={collapsed ? "Setup" : undefined}
+          aria-current={view === "setup" ? "page" : undefined}
           title={collapsed ? "Setup" : undefined}
         >
           <span className="nav-icon">{ICONS.setup}</span>
@@ -249,16 +272,16 @@ export default function Sidebar({ collapsed, onToggle, view, onSelect, brandId =
         </button>
       </nav>
 
-      <div className="sidebar-workspaces" aria-label="Connected workspaces">
-        <button className={view === "review-desk" ? "nav-item active" : "nav-item"} onClick={() => onSelect("review-desk")} disabled={!ownerAccess} title={collapsed ? "Review Desk" : undefined}>
+      <nav className="sidebar-workspaces" aria-label="Connected workspaces">
+        <button className={view === "review-desk" ? "nav-item active" : "nav-item"} onClick={() => onSelect("review-desk")} aria-label={collapsed ? "Review Desk" : undefined} aria-current={view === "review-desk" ? "page" : undefined} disabled={!ownerAccess} title={collapsed ? "Review Desk" : undefined}>
           <span className="nav-icon">{ICONS.reviewDesk}</span>
           <span className="nav-text"><b>Review Desk</b><i>{ownerAccess ? "Google business reviews" : "Owner access required"}</i></span>
         </button>
-        <button className={view === "rankscope" ? "nav-item active" : "nav-item"} onClick={() => onSelect("rankscope")} disabled={!ownerAccess} title={collapsed ? "RankScope" : undefined}>
+        <button className={view === "rankscope" ? "nav-item active" : "nav-item"} onClick={() => onSelect("rankscope")} aria-label={collapsed ? "RankScope" : undefined} aria-current={view === "rankscope" ? "page" : undefined} disabled={!ownerAccess} title={collapsed ? "RankScope" : undefined}>
           <span className="nav-icon">{ICONS.rankscope}</span>
           <span className="nav-text"><b>RankScope</b><i>{ownerAccess ? "SEO workspace" : "Owner access required"}</i></span>
         </button>
-      </div>
+      </nav>
 
       <div className="sidebar-foot">
         <p>

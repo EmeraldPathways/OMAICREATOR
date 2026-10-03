@@ -388,7 +388,7 @@ export const VULNERABILITY_LIST = VULNERABILITY_TRIGGERS;
 /* ================================================================ CRAFT == */
 
 import {
-  stageBlock, frameworksFor, FRAMEWORKS, TRANSFORMS,
+  stageBlock, FRAMEWORKS, TRANSFORMS,
   exemplarBlock, CAREER_STAGES,
 } from "./craft";
 

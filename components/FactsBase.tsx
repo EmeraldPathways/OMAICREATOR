@@ -41,7 +41,30 @@ export default function FactsBase({ brandId = "omega-financial", brandName = "Om
     }
   }
 
-  useEffect(() => { load(); }, [brandId]);
+  useEffect(() => {
+    let active = true;
+    async function loadInitial() {
+      try {
+        const response = await fetch(`/api/fact-base?brandId=${encodeURIComponent(brandId)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "The fact base could not be loaded.");
+        if (active) {
+          setConnected(data.connected !== false);
+          setFacts(data.facts || []);
+          setMessage(data.error || "");
+        }
+      } catch (error) {
+        if (active) {
+          setConnected(false);
+          setMessage(error instanceof Error ? error.message : "The fact base could not be loaded.");
+        }
+      } finally {
+        if (active) setBusy(false);
+      }
+    }
+    void loadInitial();
+    return () => { active = false; };
+  }, [brandId]);
 
   function startEdit(fact: Fact) {
     setEditing(fact.id);

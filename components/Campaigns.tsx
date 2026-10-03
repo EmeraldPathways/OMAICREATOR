@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PROFESSIONS } from "@/lib/brand";
 
 interface Campaign {
@@ -27,7 +27,7 @@ export default function Campaigns({ onUse, onCreateImage, brandId = "omega-finan
   const [plan, setPlan] = useState<{ id: number; rows: PlanRow[] } | null>(null);
 
   const [name, setName] = useState("");
-  const [profession, setProfession] = useState("gp");
+  const [profession, setProfession] = useState(brandId === "omega-financial" ? "gp" : audiences[0] || "");
   const [layer, setLayer] = useState("hard");
   const [objective, setObjective] = useState("");
   const [theme, setTheme] = useState("");
@@ -35,16 +35,15 @@ export default function Campaigns({ onUse, onCreateImage, brandId = "omega-finan
   const [startsOn, setStartsOn] = useState("");
   const [endsOn, setEndsOn] = useState("");
 
-  async function load() {
-    setBusy(true);
+  const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/campaigns?brandId=${encodeURIComponent(brandId)}`);
       const j = await res.json();
       setConnected(j.connected !== false);
       setList(j.campaigns || []);
     } finally { setBusy(false); }
-  }
-  useEffect(() => { setProfession(brandId === "omega-financial" ? "gp" : audiences[0] || ""); load(); }, [brandId]);
+  }, [brandId]);
+  useEffect(() => { void load(); }, [load]);
 
   async function create() {
     if (!name.trim()) { setMsg("Give the campaign a name."); return; }

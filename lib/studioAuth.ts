@@ -6,17 +6,33 @@ export const STUDIO_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 export type StudioSession = { email: string; expiresAt: number };
 
+export type StudioAuthEnvironment = Record<string, string | undefined>;
+
 export function normalizedEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function isAuthConfigured(env: Record<string, string | undefined> = process.env): boolean {
+export function isAuthConfigured(env: StudioAuthEnvironment = process.env): boolean {
   return Boolean(
     env.STUDIO_OWNER_EMAIL?.trim() &&
-    env.STUDIO_OWNER_PASSWORD_HASH?.trim() &&
+    hasConfiguredPassword(env) &&
     env.STUDIO_SESSION_SECRET &&
     new TextEncoder().encode(env.STUDIO_SESSION_SECRET).byteLength >= 32,
   );
+}
+
+export async function verifyOwnerPassword(password: string, env: StudioAuthEnvironment = process.env): Promise<boolean> {
+  const configuredPassword = env.STUDIO_OWNER_PASSWORD;
+  if (configuredPassword?.length) {
+    if (password.length > 1024 || configuredPassword.length > 1024) return false;
+    const encoder = new TextEncoder();
+    const [supplied, expected] = await Promise.all([
+      crypto.subtle.digest("SHA-256", encoder.encode(password)),
+      crypto.subtle.digest("SHA-256", encoder.encode(configuredPassword)),
+    ]);
+    return timingSafeEqual(new Uint8Array(supplied), new Uint8Array(expected));
+  }
+  return verifyPassword(password, env.STUDIO_OWNER_PASSWORD_HASH ?? "");
 }
 
 export async function hashPassword(password: string, iterations = 600_000): Promise<string> {
@@ -30,12 +46,9 @@ export async function hashPassword(password: string, iterations = 600_000): Prom
 }
 
 export async function verifyPassword(password: string, encoded: string): Promise<boolean> {
-  const parts = encoded.split("$");
-  if (parts.length !== 4 || parts[0] !== PASSWORD_PREFIX) return false;
-  const iterations = Number(parts[1]);
-  const salt = decodeBase64Url(parts[2]);
-  const expected = decodeBase64Url(parts[3]);
-  if (!Number.isInteger(iterations) || iterations < PASSWORD_ITERATIONS_MIN || iterations > PASSWORD_ITERATIONS_MAX || salt?.byteLength !== 16 || expected?.byteLength !== 32) return false;
+  const parts = parsePasswordHash(encoded);
+  if (!parts) return false;
+  const { iterations, salt, expected } = parts;
   try {
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
     const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, key, 256));
@@ -43,6 +56,21 @@ export async function verifyPassword(password: string, encoded: string): Promise
   } catch {
     return false;
   }
+}
+
+function hasConfiguredPassword(env: StudioAuthEnvironment): boolean {
+  if (env.STUDIO_OWNER_PASSWORD?.trim()) return true;
+  return parsePasswordHash(env.STUDIO_OWNER_PASSWORD_HASH ?? "") !== null;
+}
+
+function parsePasswordHash(encoded: string): { iterations: number; salt: Uint8Array; expected: Uint8Array } | null {
+  const parts = encoded.split("$");
+  if (parts.length !== 4 || parts[0] !== PASSWORD_PREFIX) return null;
+  const iterations = Number(parts[1]);
+  const salt = decodeBase64Url(parts[2]);
+  const expected = decodeBase64Url(parts[3]);
+  if (!Number.isInteger(iterations) || iterations < PASSWORD_ITERATIONS_MIN || iterations > PASSWORD_ITERATIONS_MAX || salt?.byteLength !== 16 || expected?.byteLength !== 32) return null;
+  return { iterations, salt, expected };
 }
 
 export async function createSessionToken(

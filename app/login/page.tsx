@@ -10,6 +10,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
@@ -58,14 +59,19 @@ export default function LoginPage() {
         <p className="auth-intro">Sign in with your owner email and password to continue.</p>
         {configured === false ? (
           <div className="auth-notice" role="status">
-            Owner sign-in has not been configured. Add <code>STUDIO_OWNER_EMAIL</code>, <code>STUDIO_OWNER_PASSWORD_HASH</code>, and <code>STUDIO_SESSION_SECRET</code> to the Site environment.
+            Owner sign-in is not configured. Set <code>STUDIO_OWNER_EMAIL</code>, <code>STUDIO_OWNER_PASSWORD</code>, and <code>STUDIO_SESSION_SECRET</code> in the Site&apos;s protected settings.
           </div>
         ) : (
           <form className="auth-form" onSubmit={submit}>
             <label htmlFor="owner-email">Email</label>
             <input id="owner-email" name="email" type="email" autoComplete="username" autoCapitalize="none" required maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} />
             <label htmlFor="owner-password">Password</label>
-            <input id="owner-password" name="password" type="password" autoComplete="current-password" required maxLength={1024} value={password} onChange={(event) => setPassword(event.target.value)} />
+            <div className="password-field">
+              <input id="owner-password" name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required maxLength={1024} value={password} onChange={(event) => setPassword(event.target.value)} />
+              <button className="password-visibility" type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)}>
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
             {message && <p className="auth-error" role="alert">{message}</p>}
             <button className="auth-submit" type="submit" disabled={busy || configured !== true}>
               {busy ? "Signing in…" : "Sign in"}

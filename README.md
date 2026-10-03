@@ -52,13 +52,13 @@ Local tool usage metrics are disabled by default. Set `WRANGLER_SEND_METRICS=tru
 
 The Site stays publicly reachable, but the application itself is restricted to one owner. Public self-registration is disabled. The app does not use ChatGPT sign-in.
 
-Run `npm run auth:setup` in an interactive terminal to create a PBKDF2 password hash and a random session signing secret. The password is entered without terminal echo and is not saved by the script. Add the three printed values as server-side Site environment settings:
+For a straightforward setup, add these as server-side Site environment settings and mark the password and session secret as protected secrets:
 
 - `STUDIO_OWNER_EMAIL`
-- `STUDIO_OWNER_PASSWORD_HASH`
+- `STUDIO_OWNER_PASSWORD`
 - `STUDIO_SESSION_SECRET`
 
-For local preview, provide the same values in the local environment. The session cookie is signed, HttpOnly, Secure on HTTPS, SameSite=Strict, and expires after 12 hours. Changing the session secret invalidates existing sessions.
+`STUDIO_OWNER_PASSWORD` stays on the server and is never committed to source. Existing deployments may keep using `STUDIO_OWNER_PASSWORD_HASH`; when both are present, the normal password variable takes precedence. To use a hash instead, run `npm run auth:setup` in an interactive terminal. For local preview, provide the same values in the local environment. The session cookie is signed, HttpOnly, Secure on HTTPS, SameSite=Strict, and expires after 12 hours. Changing the session secret invalidates existing sessions.
 
 ## Local D1 migrations
 

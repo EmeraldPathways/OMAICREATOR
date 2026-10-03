@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Library from "@/components/Library";
 import Queue from "@/components/Queue";
@@ -86,6 +86,23 @@ function hostOf(url: string) {
   }
 }
 
+const VIEW_TITLES: Record<string, string> = {
+  facts: "Fact base",
+  library: "Library",
+  queue: "Review queue",
+  campaigns: "Campaigns",
+  activity: "Activity",
+  knowledge: "Profession knowledge",
+  estate: "Estate sweep",
+  voice: "Voice bank",
+  interview: "Advisor interview",
+  rankscope: "RankScope",
+  "review-desk": "Review Desk",
+  "brand-settings": "Brand settings",
+  images: "Image studio",
+  setup: "Setup",
+};
+
 function readSnapshots(brandId: BrandId) {
   if (typeof window === "undefined") return [];
   try {
@@ -97,6 +114,9 @@ function readSnapshots(brandId: BrandId) {
 
 export default function Page() {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const mobileMenuButton = useRef<HTMLButtonElement>(null);
+  const hadMobileNavOpen = useRef(false);
   const [view, setView] = useState("email");
   const [brandId, setBrandId] = useState<BrandId>("omega-financial");
   const [brandProfiles, setBrandProfiles] = useState<BrandProfile[]>(Object.values(BRAND_PROFILES));
@@ -169,6 +189,24 @@ export default function Page() {
 
   const recoveryBrief = useMemo(() => ({ profession, view, format, tone, topic, notes, wordTarget, stage, framework }), [profession, view, format, tone, topic, notes, wordTarget, stage, framework]);
   const recovery = useDraftRecovery(`content-studio-${brandId}-brief`, recoveryBrief, isChannel);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileNavOpen(false);
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileNavOpen]);
+
+  useEffect(() => {
+    if (mobileNavOpen) {
+      document.querySelector<HTMLElement>("#studio-sidebar .nav-item:not(:disabled)")?.focus();
+    } else if (hadMobileNavOpen.current) {
+      mobileMenuButton.current?.focus();
+    }
+    hadMobileNavOpen.current = mobileNavOpen;
+  }, [mobileNavOpen]);
 
   useEffect(() => {
     const savedBrandId = (() => { try { return window.localStorage.getItem("content-studio-brand"); } catch { return null; } })();
@@ -256,6 +294,7 @@ export default function Page() {
   );
 
   function selectChannel(id: string) {
+    if (window.matchMedia("(max-width: 760px)").matches) setMobileNavOpen(false);
     if (!selectedChannels.some((item) => item.id === id)) {
       setView(id);
       if (id !== "review-desk") setReviewDeskConnected(false);
@@ -584,8 +623,13 @@ export default function Page() {
   return (
     <div className="shell">
       <Sidebar
+        id="studio-sidebar"
+        mobileOpen={mobileNavOpen}
         collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
+        onToggle={() => {
+          if (window.matchMedia("(max-width: 760px)").matches) setMobileNavOpen(false);
+          else setCollapsed((c) => !c);
+        }}
         view={view}
         onSelect={selectChannel}
         brandId={brandId}
@@ -594,34 +638,29 @@ export default function Page() {
         ownerAccess={ownerAccess}
       />
 
-      <div className="main">
+      {mobileNavOpen && <button className="scrim" type="button" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} />}
+
+      <div className="main" inert={mobileNavOpen}>
         <header className="topbar">
+          <button
+            ref={mobileMenuButton}
+            className="mobile-menu-toggle"
+            type="button"
+            aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
+            aria-controls="studio-sidebar"
+            aria-expanded={mobileNavOpen}
+            onClick={() => {
+              if (!mobileNavOpen) setCollapsed(false);
+              setMobileNavOpen((value) => !value);
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+              {mobileNavOpen ? <path d="m5 5 10 10M15 5 5 15" /> : <path d="M3 5h14M3 10h14M3 15h14" />}
+            </svg>
+            <span>{mobileNavOpen ? "Close" : "Menu"}</span>
+          </button>
           <h1>
-            {channel
-              ? channel.name
-              : view === "facts"
-              ? "Fact base"
-              : view === "library"
-              ? "Library"
-              : view === "queue"
-              ? "Review queue"
-              : view === "campaigns"
-              ? "Campaigns"
-              : view === "activity"
-              ? "Activity"
-              : view === "knowledge"
-              ? "Profession knowledge"
-              : view === "estate"
-              ? "Estate sweep"
-              : view === "voice"
-              ? "Voice bank"
-              : view === "interview"
-              ? "Advisor interview"
-              : view === "rankscope"
-              ? "RankScope"
-              : view === "review-desk"
-              ? "Review Desk"
-              : "Setup"}{" "}
+            {channel?.name || VIEW_TITLES[view] || "Workspace"}{" "}
           {channel && <em>— {channel.blurb}</em>}
           {view === "brand-settings" && <em>— {profile.name}</em>}
           {view === "images" && <em>— {profile.name}</em>}
@@ -645,6 +684,7 @@ export default function Page() {
         {view === "images" && ownerAccess && <ImageStudio key={`${brandId}:${imageStudioRevision}`} brand={profile} campaignSeed={campaignSeed} onClearCampaignSeed={() => setCampaignSeed(undefined)} />}
         {view === "library" && (
           <Library
+            key={brandId}
             brandId={brandId}
             channels={selectedChannels}
             onUsePack={(pack: ContentPack) => {
@@ -666,11 +706,11 @@ export default function Page() {
             }}
           />
         )}
-        {view === "queue" && <Queue brandId={brandId} />}
-        {view === "activity" && <Activity brandId={brandId} />}
-        {view === "knowledge" && isOmega && <Knowledge brandId={brandId} audiences={profile.audiences} />}
+        {view === "queue" && <Queue key={brandId} brandId={brandId} />}
+        {view === "activity" && <Activity key={brandId} brandId={brandId} />}
+        {view === "knowledge" && isOmega && <Knowledge key={brandId} brandId={brandId} audiences={profile.audiences} />}
         {view === "estate" && isOmega && <Estate />}
-        {view === "voice" && <VoiceBank brandId={brandId} channels={selectedChannels.map(({ id, name }) => ({ id, name }))} />}
+        {view === "voice" && <VoiceBank key={brandId} brandId={brandId} channels={selectedChannels.map(({ id, name }) => ({ id, name }))} />}
         {view === "interview" && isOmega && (
           <Interview
             onUse={(i) => {
@@ -685,6 +725,7 @@ export default function Page() {
         )}
         {view === "campaigns" && (
           <Campaigns
+            key={brandId}
             brandId={brandId}
             audiences={profile.audiences}
             onCreateImage={(item) => {
@@ -704,7 +745,7 @@ export default function Page() {
             }}
           />
         )}
-        {view === "facts" && <FactsBase brandId={brandId} brandName={profile.name} />}
+        {view === "facts" && <FactsBase key={brandId} brandId={brandId} brandName={profile.name} />}
         {view === "setup" && <SetupView />}
         {view === "rankscope" && ownerAccess && <RankScopeWorkspace key={brandId} profile={profile} />}
         {view === "review-desk" && ownerAccess && <ReviewDeskFrame key={brandId} brandId={brandId} brandName={profile.name} connected={reviewDeskConnected} />}

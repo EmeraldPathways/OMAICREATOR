@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSessionToken, isAuthConfigured, normalizedEmail, STUDIO_SESSION_COOKIE, STUDIO_SESSION_TTL_MS, verifyPassword } from "@/lib/studioAuth";
+import { createSessionToken, isAuthConfigured, normalizedEmail, STUDIO_SESSION_COOKIE, STUDIO_SESSION_TTL_MS, verifyOwnerPassword } from "@/lib/studioAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   const configuredEmail = normalizedEmail(process.env.STUDIO_OWNER_EMAIL ?? "");
   const emailMatches = email === configuredEmail;
-  const passwordMatches = await verifyPassword(password, process.env.STUDIO_OWNER_PASSWORD_HASH ?? "");
+  const passwordMatches = await verifyOwnerPassword(password);
   if (!emailMatches || !passwordMatches) {
     return NextResponse.json({ error: "Email or password is incorrect." }, { status: 401, headers: { "cache-control": "no-store" } });
   }

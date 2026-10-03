@@ -28,16 +28,38 @@ export default function VoiceBank({ brandId = "omega-financial", channels = CHAN
   const [qContext, setQContext] = useState("");
   const [qFrom, setQFrom] = useState("");
 
-  async function load() {
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const response = await fetch(`/api/voicebank?brandId=${encodeURIComponent(brandId)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Voice bank could not be loaded.");
+        if (active) {
+          setConnected(data.connected !== false);
+          setExemplars(data.exemplars || []);
+          setQuestions(data.questions || []);
+        }
+      } catch (error) {
+        if (active) setMsg(error instanceof Error ? error.message : "Voice bank could not be loaded.");
+      }
+    }
+    void load();
+    return () => { active = false; };
+  }, [brandId]);
+
+  const load = async () => {
     try {
-      const res = await fetch(`/api/voicebank?brandId=${encodeURIComponent(brandId)}`);
-      const j = await res.json();
-      setConnected(j.connected !== false);
-      setExemplars(j.exemplars || []);
-      setQuestions(j.questions || []);
-    } catch { /* seeded exemplars still render */ }
-  }
-  useEffect(() => { load(); setEChannel(channels[0]?.id || "email"); if (brandId !== "omega-financial") setTab("exemplars"); }, [brandId]);
+      const response = await fetch(`/api/voicebank?brandId=${encodeURIComponent(brandId)}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Voice bank could not be loaded.");
+      setConnected(data.connected !== false);
+      setExemplars(data.exemplars || []);
+      setQuestions(data.questions || []);
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "Voice bank could not be loaded.");
+    }
+  };
 
   async function addExemplar() {
     if (!eLabel.trim() || !eBody.trim() || !eBy.trim()) {

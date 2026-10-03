@@ -54,7 +54,26 @@ export default function Queue({ brandId = "omega-financial" }: { brandId?: strin
     }
   }
 
-  useEffect(() => { load(); }, [brandId]);
+  useEffect(() => {
+    let active = true;
+    async function loadInitial() {
+      try {
+        const response = await fetch(`/api/queue?brandId=${encodeURIComponent(brandId)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "The review queue could not be loaded.");
+        if (active) {
+          setConnected(data.connected !== false);
+          setItems(data.items || []);
+        }
+      } catch (error) {
+        if (active) setMsg(error instanceof Error ? error.message : "The review queue could not be loaded.");
+      } finally {
+        if (active) setBusy(false);
+      }
+    }
+    void loadInitial();
+    return () => { active = false; };
+  }, [brandId]);
 
   async function move(id: number, status: string) {
     if (!actor.trim()) {
