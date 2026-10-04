@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
-import { normalizedEmail, STUDIO_SESSION_COOKIE, verifySessionToken } from "./studioAuth";
+import { normalizedEmail, STUDIO_SESSION_COOKIE, studioOwnerActorId, verifySessionToken } from "./studioAuth";
 
-export type StudioOwner = { email: string; displayName: string };
+export type StudioOwner = { userId: string; email: string; displayName: string };
 
 export type OwnerAuthorization =
   | { authorized: true; user: StudioOwner }
@@ -24,5 +24,5 @@ export async function requireAuthorizedStudioOwner(): Promise<OwnerAuthorization
   if (!session || !ownerEmail || session.email !== normalizedEmail(ownerEmail)) {
     return denied(401, "Sign in to use this workspace.");
   }
-  return { authorized: true, user: { email: session.email, displayName: session.email } };
+  return { authorized: true, user: { userId: studioOwnerActorId(session.email), email: session.email, displayName: session.email } };
 }

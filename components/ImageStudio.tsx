@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { BrandProfile, ImagePreset } from "@/lib/brandProfiles";
-import { computeLogoOverlay } from "@/lib/imageGeneration";
+import { computeLogoOverlay, formatAssetCreatedAt } from "@/lib/imageGeneration";
 
 interface CampaignSeed { topic: string; brief?: string; }
 interface Asset { id: number; width: number; height: number; model: string; created_at: string; url: string; prompt?: string; }
@@ -153,7 +153,7 @@ export default function ImageStudio({ brand, campaignSeed, onClearCampaignSeed }
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={asset.url} alt={`${brand.name} generated visual ${asset.width} by ${asset.height}`} /><span className="safe-area-guide" />
           </div>
-          <div className="image-asset-meta"><b>{asset.width} × {asset.height}</b><span>{new Date(asset.created_at).toLocaleString("en-IE")}</span><div className="btn-row"><a className="btn btn-secondary" href={asset.url} download={`${brand.id}-${asset.id}.png`}>Download PNG</a></div></div>
+          <div className="image-asset-meta"><b>{asset.width} × {asset.height}</b><span>{formatAssetCreatedAt(asset.created_at)}</span><div className="btn-row"><a className="btn btn-secondary" href={asset.url} download={`${brand.id}-${asset.id}.png`}>Download PNG</a></div></div>
         </article>)}</div> : <div className="empty"><strong>No saved images yet</strong><p>Create a visual above. It will be saved to this brand&apos;s private image library.</p></div>}
       </section>
     </div>

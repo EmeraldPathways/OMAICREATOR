@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { NextResponse } from "next/server";
 import { isBrandId } from "@/lib/brandProfiles";
 import { getConfiguredBrandProfile } from "@/lib/brandProfileStore";
-import { buildImagePrompt, normalizeImageDimensions, persistGeneratedAssets, validImageSignature, validateImageRequest } from "@/lib/imageGeneration";
+import { buildImagePrompt, describeImageGenerationError, normalizeImageDimensions, persistGeneratedAssets, validImageSignature, validateImageRequest } from "@/lib/imageGeneration";
 import { db, hasDb } from "@/lib/db";
 import { requireAuthorizedStudioOwner } from "@/lib/ownerAuthorization";
 import { resolveOpenAIKey } from "@/lib/openai";
@@ -22,17 +22,21 @@ function keyFor(brandId: string) {
 }
 
 export async function POST(request: Request) {
+  const requestId = crypto.randomUUID();
+  let stage = "authorizing owner";
   const authorization = await requireAuthorizedStudioOwner();
   if (!authorization.authorized) return authorization.response;
   if (!env.MEDIA || !hasDb()) return NextResponse.json({ error: "Image storage is not configured for this site yet." }, { status: 503 });
 
   try {
+    stage = "reading image request";
     const form = await request.formData();
     const brandIdValue = String(form.get("brandId") || "");
     if (!isBrandId(brandIdValue)) return NextResponse.json({ error: "Choose a supported business first." }, { status: 400 });
     const brandId = brandIdValue;
     const subject = String(form.get("subject") || "").trim();
     if (!subject) return NextResponse.json({ error: "Describe the image you want to create." }, { status: 400 });
+    stage = "loading brand profile";
     const profile = await getConfiguredBrandProfile(brandId);
     const reference = form.get("reference");
     const referenceFile = reference instanceof File && reference.size > 0 ? reference : null;
@@ -69,6 +73,7 @@ export async function POST(request: Request) {
 
     const qualityValue = String(form.get("quality") || "high");
     const quality = ["low", "medium", "high", "xhigh", "max"].includes(qualityValue) ? qualityValue : "high";
+    stage = "loading verified brand facts";
     const facts = await db()`SELECT label, value FROM brand_facts WHERE brand_id = ${brandId} AND status = 'verified'`;
     const approvedFacts = [...profile.approvedFacts, ...facts.map((fact) => `${String(fact.label)}: ${String(fact.value)}`)];
     const prompt = buildImagePrompt({
@@ -89,6 +94,7 @@ export async function POST(request: Request) {
     const model = hasReference ? "gpt-image-2.5-sunburst" : profile.imageModel;
     const apiKey = resolveOpenAIKey();
     let openAIResponse: Response;
+    stage = "requesting image from OpenAI";
     if (hasReference) {
       const payload = new FormData();
       payload.set("model", model);
@@ -112,31 +118,37 @@ export async function POST(request: Request) {
       const detail = await openAIResponse.text();
       return NextResponse.json({ error: `Image generation failed (${openAIResponse.status}). ${detail.slice(0, 220)}` }, { status: 502 });
     }
+    stage = "reading OpenAI image response";
     const result = await openAIResponse.json() as { data?: ImageOutput[] };
     const outputs = (result.data || []).filter((image): image is { b64_json: string } => typeof image.b64_json === "string");
     if (outputs.length !== variants) return NextResponse.json({ error: "The image service returned an incomplete set. Please retry." }, { status: 502 });
 
+    stage = "decoding generated image";
     const saved = outputs.map((output) => {
       const bytes = decodeBase64(output.b64_json);
       if (!validImageSignature("image/png", bytes)) throw new Error("The image service returned invalid PNG data.");
       return { objectKey: keyFor(brandId), bytes, brandId, width: dimensions.width, height: dimensions.height, prompt, model, createdBy: authorization.user.userId };
     });
+    stage = "saving generated image";
     await persistGeneratedAssets({
       assets: saved,
       put: async (asset) => { await env.MEDIA!.put(asset.objectKey, asset.bytes, { httpMetadata: { contentType: "image/png", cacheControl: "private, no-store" } }); },
-      insert: async (asset) => { await db()`INSERT INTO generated_assets (brand_id, object_key, mime_type, width, height, prompt, model, created_by)
-        VALUES (${asset.brandId}, ${asset.objectKey}, 'image/png', ${asset.width}, ${asset.height}, ${asset.prompt}, ${asset.model}, ${asset.createdBy})`; },
+      insert: async (asset) => { await db()`INSERT INTO generated_assets (brand_id, object_key, mime_type, width, height, prompt, model, created_by, created_at)
+        VALUES (${asset.brandId}, ${asset.objectKey}, 'image/png', ${asset.width}, ${asset.height}, ${asset.prompt}, ${asset.model}, ${asset.createdBy}, CURRENT_TIMESTAMP)`; },
       deleteObject: async (objectKey) => { await env.MEDIA!.delete(objectKey); },
       deleteMetadata: async (objectKey) => { await db()`DELETE FROM generated_assets WHERE object_key = ${objectKey}`; },
     });
 
+    stage = "loading saved image metadata";
     const sql = db();
     const rows = await Promise.all(saved.map((asset) => sql`SELECT id, brand_id, width, height, model, created_at FROM generated_assets WHERE brand_id = ${brandId} AND object_key = ${asset.objectKey} LIMIT 1`));
     return NextResponse.json({ assets: rows.flat().map((asset) => ({ ...asset, url: `/api/images/${asset.id}?brandId=${brandId}` })) }, { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
+    const diagnostic = describeImageGenerationError(error);
+    console.error("Image generation request failed", { requestId, stage, ...diagnostic });
     const message = error instanceof Error && /^(No OpenAI key|The hosted database)/.test(error.message)
       ? error.message
       : "Image generation could not be completed. Check the prompt and storage configuration, then retry.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message, requestId }, { status: 500 });
   }
 }

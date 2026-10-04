@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Library from "@/components/Library";
+import History from "@/components/History";
 import Queue from "@/components/Queue";
 import Campaigns from "@/components/Campaigns";
 import Knowledge from "@/components/Knowledge";
@@ -91,6 +92,7 @@ const VIEW_TITLES: Record<string, string> = {
   library: "Library",
   queue: "Review queue",
   campaigns: "Campaigns",
+  history: "History",
   activity: "Activity",
   knowledge: "Profession knowledge",
   estate: "Estate sweep",
@@ -200,13 +202,26 @@ export default function Page() {
   }, [mobileNavOpen]);
 
   useEffect(() => {
+    const desktopQuery = window.matchMedia("(min-width: 761px)");
+    function closeDrawerOnDesktop() {
+      if (desktopQuery.matches) setMobileNavOpen(false);
+    }
+    desktopQuery.addEventListener("change", closeDrawerOnDesktop);
+    return () => desktopQuery.removeEventListener("change", closeDrawerOnDesktop);
+  }, []);
+
+  useEffect(() => {
     if (mobileNavOpen) {
       document.querySelector<HTMLElement>("#studio-sidebar .nav-item:not(:disabled)")?.focus();
-    } else if (hadMobileNavOpen.current) {
+    } else if (hadMobileNavOpen.current && window.matchMedia("(max-width: 760px)").matches) {
       mobileMenuButton.current?.focus();
     }
     hadMobileNavOpen.current = mobileNavOpen;
   }, [mobileNavOpen]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [view, brandId]);
 
   useEffect(() => {
     const savedBrandId = (() => { try { return window.localStorage.getItem("content-studio-brand"); } catch { return null; } })();
@@ -317,6 +332,16 @@ export default function Page() {
     setAngles([]); setAngle(""); setHooks([]);
     setArc(null); setSeriesOut([]); setCarousel(null); setPlainDelta(null);
     setFramework("");
+  }
+
+  function openHistoryComposer(requestedChannel: string) {
+    const target = selectedChannels.find((item) => item.id === requestedChannel)
+      || selectedChannels.find((item) => item.id === "website")
+      || selectedChannels[0];
+    if (!target) return;
+    setReviewDeskConnected(false);
+    setView(target.id);
+    if (target.formats[0]?.id) setFormat(target.formats[0].id);
   }
 
   function selectBrand(id: BrandId) {
@@ -682,6 +707,7 @@ export default function Page() {
 
         {view === "brand-settings" && ownerAccess && <BrandSettings key={brandId} brand={profile} onSaved={(updated) => setBrandProfiles((items) => items.map((item) => item.id === updated.id ? updated : item))} />}
         {view === "images" && ownerAccess && <ImageStudio key={`${brandId}:${imageStudioRevision}`} brand={profile} campaignSeed={campaignSeed} onClearCampaignSeed={() => setCampaignSeed(undefined)} />}
+        {view === "history" && <History key={brandId} brandId={brandId} brandName={profile.name} onCreate={openHistoryComposer} />}
         {view === "library" && (
           <Library
             key={brandId}

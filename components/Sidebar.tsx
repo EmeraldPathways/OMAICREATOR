@@ -76,6 +76,12 @@ const ICONS: Record<string, React.ReactNode> = {
       <path d="M3.5 4.5h4a2 2 0 0 1 2 2v9a1.6 1.6 0 0 0-1.6-1.6H3.5zM16.5 4.5h-4a2 2 0 0 0-2 2v9a1.6 1.6 0 0 1 1.6-1.6h4.4z" />
     </svg>
   ),
+  history: (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M4 5.5h12M4 10h12M4 14.5h8" />
+      <path d="M14.5 14.5h3M16 13v3" />
+    </svg>
+  ),
   setup: (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
       <circle cx="10" cy="10" r="2.6" />
@@ -200,6 +206,10 @@ export default function Sidebar({ id, mobileOpen = false, collapsed, onToggle, v
           <span className="nav-icon">{ICONS.queue}</span>
           <span className="nav-text"><b>Review queue</b><i>Worst risk first</i></span>
         </button>
+        <button className={view === "history" ? "nav-item active" : "nav-item"} onClick={() => onSelect("history")} aria-label={collapsed ? "History" : undefined} aria-current={view === "history" ? "page" : undefined} title={collapsed ? "History" : undefined}>
+          <span className="nav-icon">{ICONS.history}</span>
+          <span className="nav-text"><b>History</b><i>Saved content by channel</i></span>
+        </button>
         <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={() => onSelect("activity")} aria-label={collapsed ? "Activity" : undefined} aria-current={view === "activity" ? "page" : undefined} title={collapsed ? "Activity" : undefined}>
           <span className="nav-icon">{ICONS.queue}</span><span className="nav-text"><b>Activity</b><i>Recent changes</i></span>
         </button>
@@ -233,9 +243,6 @@ export default function Sidebar({ id, mobileOpen = false, collapsed, onToggle, v
         </button>
         <button className={view === "brand-settings" ? "nav-item active" : "nav-item"} onClick={() => onSelect("brand-settings")} aria-label={collapsed ? "Brand settings" : undefined} aria-current={view === "brand-settings" ? "page" : undefined} disabled={!ownerAccess} title={collapsed ? "Brand settings" : undefined}>
           <span className="nav-icon">{ICONS.setup}</span><span className="nav-text"><b>Brand settings</b><i>{ownerAccess ? "Voice, facts and visuals" : "Owner access required"}</i></span>
-        </button>
-        <button className={view === "images" ? "nav-item active" : "nav-item"} onClick={() => onSelect("images")} aria-label={collapsed ? "Image studio" : undefined} aria-current={view === "images" ? "page" : undefined} disabled={!ownerAccess} title={collapsed ? "Image studio" : undefined}>
-          <span className="nav-icon">{ICONS.website}</span><span className="nav-text"><b>Image studio</b><i>{ownerAccess ? "Create campaign visuals" : "Owner access required"}</i></span>
         </button>
         {isOmega && <button
           className={view === "knowledge" ? "nav-item active" : "nav-item"}
@@ -273,6 +280,9 @@ export default function Sidebar({ id, mobileOpen = false, collapsed, onToggle, v
       </nav>
 
       <nav className="sidebar-workspaces" aria-label="Connected workspaces">
+        <button className={view === "images" ? "nav-item active" : "nav-item"} onClick={() => onSelect("images")} aria-label={collapsed ? "Image studio" : undefined} aria-current={view === "images" ? "page" : undefined} disabled={!ownerAccess} title={collapsed ? "Image studio" : undefined}>
+          <span className="nav-icon">{ICONS.website}</span><span className="nav-text"><b>Image studio</b><i>{ownerAccess ? "Create campaign visuals" : "Owner access required"}</i></span>
+        </button>
         <button className={view === "review-desk" ? "nav-item active" : "nav-item"} onClick={() => onSelect("review-desk")} aria-label={collapsed ? "Review Desk" : undefined} aria-current={view === "review-desk" ? "page" : undefined} disabled={!ownerAccess} title={collapsed ? "Review Desk" : undefined}>
           <span className="nav-icon">{ICONS.reviewDesk}</span>
           <span className="nav-text"><b>Review Desk</b><i>{ownerAccess ? "Google business reviews" : "Owner access required"}</i></span>

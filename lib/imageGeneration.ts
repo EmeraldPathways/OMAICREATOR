@@ -6,6 +6,17 @@ const MAX_EDGE = 3840;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
 const SUPPORTED_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 
+export function describeImageGenerationError(error: unknown): { name: string; message: string } {
+  if (error instanceof Error) return { name: error.name || "Error", message: error.message || "Unknown error" };
+  return { name: "UnknownError", message: String(error) };
+}
+
+export function formatAssetCreatedAt(value: string | null | undefined, locale = "en-IE"): string {
+  if (!value || value === "CURRENT_TIMESTAMP") return "Date unavailable";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleString(locale);
+}
+
 export function normalizeImageDimensions(width: number, height: number): { width: number; height: number; providerSize: string } {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
     throw new Error("Image width and height must be positive whole numbers.");

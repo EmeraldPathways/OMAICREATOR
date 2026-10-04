@@ -79,6 +79,24 @@ test("the embedded Review Desk client script is valid JavaScript", async () => {
   assert.doesNotThrow(() => new vm.Script(script));
 });
 
+test("Review Desk exposes the same destinations as tabs and a mobile select", async () => {
+  const request = new Request("https://studio.test/api/review-desk/ui?brandId=omega-financial");
+  const db = { prepare() { throw new Error("UI shell should not query review data before loading."); } } as never;
+  const response = await dispatchReviewDeskRequest(request, "owner@example.ie", db, {});
+  const body = await response.text();
+  const script = body.match(/<script>([\s\S]*?)<\/script>/)?.[1] || "";
+
+  assert.match(body, /<label[^>]*for="mobileNav"[^>]*>Review Desk section<select id="mobileNav"/);
+  assert.match(body, /<select id="mobileNav"/);
+  for (const view of ["Inbox", "Insights", "Your style", "Business knowledge", "Automation", "Connections", "Activity"]) {
+    assert.ok(body.includes(view), `expected ${view} in the shared navigation`);
+  }
+  assert.match(script, /mobileNav\.value=view/);
+  assert.match(script, /mobileNav\.onchange=\(\)=>\{view=mobileNav\.value;render\(\)\}/);
+  assert.match(body, /@media\(min-width:761px\)\{\.mobile-nav-select\{display:none\}\}/);
+  assert.match(body, /@media\(max-width:760px\)\{#nav\{display:none\}/);
+});
+
 test("the Review Desk state route installs its schema on a fresh Site database", async () => {
   const sqlite = new DatabaseSync(":memory:");
   const request = new Request("https://studio.test/api/review-desk/state?brandId=eco-car-wash");

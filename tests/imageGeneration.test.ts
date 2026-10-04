@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
 const load = () => import("../lib/imageGeneration.ts");
 
@@ -8,6 +9,13 @@ test("normalizes standard and custom image dimensions to provider-safe multiples
   assert.deepEqual(normalizeImageDimensions(1024, 1024), { width: 1024, height: 1024, providerSize: "1024x1024" });
   assert.deepEqual(normalizeImageDimensions(1536, 1024), { width: 1536, height: 1024, providerSize: "1536x1024" });
   assert.deepEqual(normalizeImageDimensions(1200, 1600), { width: 1200, height: 1600, providerSize: "1200x1600" });
+});
+
+test("formats saved image timestamps safely when older database defaults are literal text", async () => {
+  const { formatAssetCreatedAt } = await load();
+  assert.equal(formatAssetCreatedAt("CURRENT_TIMESTAMP"), "Date unavailable");
+  assert.equal(formatAssetCreatedAt("not-a-date"), "Date unavailable");
+  assert.notEqual(formatAssetCreatedAt("2026-10-03T18:00:00.000Z"), "Date unavailable");
 });
 
 test("rejects image sizes outside provider pixel, edge, and aspect limits", async () => {
@@ -84,4 +92,29 @@ test("removes every stored object and metadata row if a batch persistence step f
   assert.deepEqual(stored, ["a.png", "b.png"]);
   assert.deepEqual(deleted, ["a.png", "b.png"]);
   assert.deepEqual(metadataDeleted, ["a.png", "b.png"]);
+});
+
+test("formats unexpected image generation failures for safe request-scoped diagnostics", async () => {
+  const { describeImageGenerationError } = await load();
+  assert.deepEqual(describeImageGenerationError(new Error("R2 put failed")), {
+    name: "Error",
+    message: "R2 put failed",
+  });
+  assert.deepEqual(describeImageGenerationError("unknown failure"), {
+    name: "UnknownError",
+    message: "unknown failure",
+  });
+});
+
+test("Image Studio keeps orientation and output sizing usable on narrow screens", async () => {
+  const component = await readFile(new URL("../components/ImageStudio.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(component, /id="image-preset"/);
+  assert.match(component, /id="image-width"/);
+  assert.match(component, /id="image-height"/);
+  assert.match(component, /className="grid-2"/);
+  assert.match(css, /\.image-studio[^{}]*\.btn[^{}]*\{[^}]*width:\s*100%/s);
+  assert.match(css, /\.image-asset-grid\{grid-template-columns:1fr/);
+  assert.match(css, /\.image-studio[\s\S]*min-width:\s*0/);
+  assert.match(css, /\.image-studio \.field > input:not\(\[type="checkbox"\]\):not\(\[type="file"\]\):not\(\[type="number"\]\)\s*\{[^}]*width:\s*100%/);
 });

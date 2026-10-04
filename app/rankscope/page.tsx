@@ -230,6 +230,29 @@ export default function Home() {
     return () => window.removeEventListener("message", onMessage);
   }, [embedded]);
   useEffect(() => {
+    if (!embedded) return;
+    let frame = 0;
+    const reportHeight = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const topbar = document.querySelector<HTMLElement>(".topbar");
+        const content = document.querySelector<HTMLElement>(".content");
+        const height = Math.ceil(Math.max(480, (topbar?.getBoundingClientRect().height || 0) + (content?.getBoundingClientRect().height || 0)));
+        window.parent.postMessage({ type: "studio:frame-height", workspace: "rankscope", height }, window.location.origin);
+      });
+    };
+    const observer = new ResizeObserver(reportHeight);
+    observer.observe(document.documentElement);
+    if (document.body) observer.observe(document.body);
+    window.addEventListener("resize", reportHeight);
+    reportHeight();
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", reportHeight);
+    };
+  }, [embedded, view]);
+  useEffect(() => {
     if (workspacePersistence !== "ready") return;
     const timer = window.setTimeout(() => {
       fetch(`/api/workspace/state${brandId ? `?brandId=${encodeURIComponent(brandId)}` : ""}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ domain, keywords, competitors, backlinks: backlinkSummary, refDomains, google }) }).catch(() => undefined);

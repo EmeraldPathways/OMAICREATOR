@@ -12,6 +12,10 @@ export function normalizedEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
+export function studioOwnerActorId(email: string): string {
+  return normalizedEmail(email);
+}
+
 export function isAuthConfigured(env: StudioAuthEnvironment = process.env): boolean {
   return Boolean(
     env.STUDIO_OWNER_EMAIL?.trim() &&
