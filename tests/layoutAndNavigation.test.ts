@@ -57,6 +57,15 @@ test("settings owns Voice bank and Advisor interview is no longer a studio desti
   assert.doesNotMatch(page, /view === "interview"/);
 });
 
+test("Voice bank uses the selected brand channel list", async () => {
+  const source = await read("../components/VoiceBank.tsx");
+
+  assert.match(source, /channels\.map\(\(c\)/);
+  assert.match(source, /channels\.find\(\(c\)/);
+  assert.doesNotMatch(source, /CHANNELS\.map\(\(c\)/);
+  assert.doesNotMatch(source, /CHANNELS\.find\(\(c\)/);
+});
+
 test("the main view registry names History", async () => {
   const source = await read("../app/page.tsx");
   assert.match(source, /history:\s*["']History["']/);

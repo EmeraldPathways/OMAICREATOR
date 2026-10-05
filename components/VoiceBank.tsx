@@ -127,7 +127,7 @@ export default function VoiceBank({ brandId = "omega-financial", channels = CHAN
                 <div className="grid-2">
                   <div className="field"><label>Channel</label>
                     <select value={eChannel} onChange={(e) => setEChannel(e.target.value)}>
-                      {CHANNELS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select></div>
                   <div className="field"><label>Label</label>
                     <input type="text" value={eLabel} onChange={(e) => setELabel(e.target.value)} placeholder="Pension reminder — Dentists" /></div>
@@ -149,7 +149,7 @@ export default function VoiceBank({ brandId = "omega-financial", channels = CHAN
                 <h2>{e.label}</h2>
                 <span className="hint">
                   <span className={`pill ${e.seeded ? "verified" : "disputed"}`}>{e.seeded ? "seeded" : e.added_by || "added"}</span>
-                  {" "}{CHANNELS.find((c) => c.id === e.channel)?.name || e.channel}
+                  {" "}{channels.find((c) => c.id === e.channel)?.name || e.channel}
                 </span>
               </div>
               <div className="panel-body">
