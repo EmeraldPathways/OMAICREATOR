@@ -4,7 +4,7 @@
 
 - **Current result:** production pages were reviewed with an owner session at the available 1363 × 936 desktop viewport; automated checks pass. Exact target-size and mobile visual acceptance remain blocked by unavailable viewport controls.
 - **Production version:** Sites v43, commit `0d3533bc6b4b02a5309a122f2152db4a5d38e992`, deployment `appgdep_6ac2640e6d34819197ec32eab9a99519`.
-- **Automated verification:** `npm run test:unit` (88/88), `npm run lint` (exit 0), and `npm run build` (exit 0).
+- **Automated verification:** `npm run test:unit` (90/90), `npm run lint` (exit 0), and `npm run build` (exit 0).
 - **Local preview:** `npm run dev` reported a pre-existing server on port 5173, but readiness requests from this workspace could not connect. The cloud browser rejected `127.0.0.1:5173` with `net::ERR_BLOCKED_BY_CLIENT`.
 - **Cloud browser:** the signed-in production app was reviewed at 1363 × 936 across all 18 Studio destinations, all 7 Review Desk tabs, and all 13 RankScope tabs. The app shell and embeds had no horizontal overflow at this viewport. This is not a 1440 × 900 or 1024 × 768 run. The first reload snapshot briefly showed disabled owner controls; a fresh snapshot confirmed the session remained active, and the Image Studio correction passed its post-deploy visual retest.
 - **Authentication:** the owner signed in manually for this review. The live owner session remained active after page hydration; no credentials were read or entered.
@@ -87,6 +87,13 @@ A fresh whole-branch code review found and prompted fixes for three responsive i
 - Review Desk and RankScope now report natural content height instead of the iframe viewport height, so frames can shrink after content or width changes. RankScope's embedded workspace no longer enforces a viewport-height minimum.
 - The mobile business selector now uses 16px text.
 
-Regression checks were added. Final local checks: 88/88 unit tests, lint, production build, and `git diff --check` pass. These code checks do not replace the blocked visual/browser acceptance rows above.
+Regression checks were added. Final local checks: 90/90 unit tests, lint, production build, and `git diff --check` pass. These code checks do not replace the blocked visual/browser acceptance rows above.
 
-The signed-in live review at 1363 × 936 found short default widths on five Image Studio text inputs. A scoped CSS rule and regression assertion were added; the assertion failed before the CSS change, then passed with the 88-test suite. Lint, build, and diff check passed. Version 43 (`0d3533bc6b4b02a5309a122f2152db4a5d38e992`) is live. The post-deploy production retest passed: Style, Mood, Lighting, Lens, and Visual avoid list fields now fill their available columns; the app shell has no horizontal overflow at 1363 × 936.
+The signed-in live review at 1363 × 936 found short default widths on five Image Studio text inputs. A scoped CSS rule and regression assertion were added; the assertion failed before the CSS change, then passed with the 90-test suite. Lint, build, and diff check passed. Version 43 (`0d3533bc6b4b02a5309a122f2152db4a5d38e992`) is live. The post-deploy production retest passed: Style, Mood, Lighting, Lens, and Visual avoid list fields now fill their available columns; the app shell has no horizontal overflow at 1363 × 936.
+
+## Navigation follow-up (2026-10-05)
+
+- Removed the Advisor interview destination and its active page flow from the Studio shell while keeping the existing interview API and stored data available for compatibility.
+- Moved Voice bank into a dedicated Settings group alongside Brand settings and Setup.
+- Voice bank channel controls now use the selected business profile, including the non-Omega channel lists.
+- Added navigation and brand-channel regression checks. The full suite is now 90/90.
