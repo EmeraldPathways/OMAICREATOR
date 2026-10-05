@@ -41,11 +41,6 @@ const ICONS: Record<string, React.ReactNode> = {
       <path d="M7 9h6M7 12h4" />
     </svg>
   ),
-  interview: (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M10 2.5a3 3 0 0 1 3 3v3a3 3 0 0 1-6 0v-3a3 3 0 0 1 3-3Z" /><path d="M5 9.5a5 5 0 0 0 10 0M10 14.5v3" />
-    </svg>
-  ),
   voice: (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
       <path d="M3.5 5.5h13M3.5 9h13M3.5 12.5h8" /><path d="M13.5 15.5l2 2 3-4" />
@@ -161,30 +156,6 @@ export default function Sidebar({ id, mobileOpen = false, collapsed, onToggle, v
           </button>
         ))}
 
-        {isOmega && <div className="nav-label">Craft</div>}
-        {isOmega && <>
-        <button
-          className={view === "interview" ? "nav-item active" : "nav-item"}
-          onClick={() => onSelect("interview")}
-          aria-label={collapsed ? "Advisor interview" : undefined}
-          aria-current={view === "interview" ? "page" : undefined}
-          title={collapsed ? "Advisor interview" : undefined}
-        >
-          <span className="nav-icon">{ICONS.interview}</span>
-          <span className="nav-text"><b>Advisor interview</b><i>What they actually know</i></span>
-        </button>
-        <button
-          className={view === "voice" ? "nav-item active" : "nav-item"}
-          onClick={() => onSelect("voice")}
-          aria-label={collapsed ? "Voice bank" : undefined}
-          aria-current={view === "voice" ? "page" : undefined}
-          title={collapsed ? "Voice bank" : undefined}
-        >
-          <span className="nav-icon">{ICONS.voice}</span>
-          <span className="nav-text"><b>Voice bank</b><i>Exemplars and questions</i></span>
-        </button>
-        </>}
-
         <div className="nav-label">Manage</div>
         <button
           className={view === "campaigns" ? "nav-item active" : "nav-item"}
@@ -241,9 +212,6 @@ export default function Sidebar({ id, mobileOpen = false, collapsed, onToggle, v
             <i>What the tool has learned</i>
           </span>
         </button>
-        <button className={view === "brand-settings" ? "nav-item active" : "nav-item"} onClick={() => onSelect("brand-settings")} aria-label={collapsed ? "Brand settings" : undefined} aria-current={view === "brand-settings" ? "page" : undefined} disabled={!ownerAccess} title={collapsed ? "Brand settings" : undefined}>
-          <span className="nav-icon">{ICONS.setup}</span><span className="nav-text"><b>Brand settings</b><i>{ownerAccess ? "Voice, facts and visuals" : "Owner access required"}</i></span>
-        </button>
         {isOmega && <button
           className={view === "knowledge" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("knowledge")}
@@ -264,6 +232,20 @@ export default function Sidebar({ id, mobileOpen = false, collapsed, onToggle, v
           <span className="nav-icon">{ICONS.estate}</span>
           <span className="nav-text"><b>Estate sweep</b><i>Scan what is live</i></span>
         </button>}
+        <div className="nav-label">Settings</div>
+        <button className={view === "brand-settings" ? "nav-item active" : "nav-item"} onClick={() => onSelect("brand-settings")} aria-label={collapsed ? "Brand settings" : undefined} aria-current={view === "brand-settings" ? "page" : undefined} disabled={!ownerAccess} title={collapsed ? "Brand settings" : undefined}>
+          <span className="nav-icon">{ICONS.setup}</span><span className="nav-text"><b>Brand settings</b><i>{ownerAccess ? "Voice, facts and visuals" : "Owner access required"}</i></span>
+        </button>
+        <button
+          className={view === "voice" ? "nav-item active" : "nav-item"}
+          onClick={() => onSelect("voice")}
+          aria-label={collapsed ? "Voice bank" : undefined}
+          aria-current={view === "voice" ? "page" : undefined}
+          title={collapsed ? "Voice bank" : undefined}
+        >
+          <span className="nav-icon">{ICONS.voice}</span>
+          <span className="nav-text"><b>Voice bank</b><i>Exemplars and questions</i></span>
+        </button>
         <button
           className={view === "setup" ? "nav-item active" : "nav-item"}
           onClick={() => onSelect("setup")}

@@ -8,7 +8,6 @@ import Queue from "@/components/Queue";
 import Campaigns from "@/components/Campaigns";
 import Knowledge from "@/components/Knowledge";
 import Estate from "@/components/Estate";
-import Interview from "@/components/Interview";
 import VoiceBank from "@/components/VoiceBank";
 import { CAREER_STAGES, frameworksFor, TRANSFORMS } from "@/lib/craft";
 import HighlightedDraft, { type Flag } from "@/components/HighlightedDraft";
@@ -62,8 +61,6 @@ interface Audit {
 interface Angle { title: string; pitch: string; why: string; risk: string }
 interface Hook { text: string; kind: string; note: string }
 interface SeriesPart { n: number; title: string; purpose: string; adds: string; holds_back: string; cta: string }
-interface InterviewRef { id: number; advisor: string; topic: string; profession: string; stage: string | null }
-
 interface Risk {
   score: number;
   band: string;
@@ -97,7 +94,6 @@ const VIEW_TITLES: Record<string, string> = {
   knowledge: "Profession knowledge",
   estate: "Estate sweep",
   voice: "Voice bank",
-  interview: "Advisor interview",
   rankscope: "RankScope",
   "review-desk": "Review Desk",
   "brand-settings": "Brand settings",
@@ -149,7 +145,6 @@ export default function Page() {
   const [angles, setAngles] = useState<Angle[]>([]);
   const [angle, setAngle] = useState<string>("");
   const [hooks, setHooks] = useState<Hook[]>([]);
-  const [interview, setInterview] = useState<InterviewRef | null>(null);
   const [arc, setArc] = useState<{ arc: string; parts: SeriesPart[] } | null>(null);
   const [seriesOut, setSeriesOut] = useState<{ n: number; title: string; body: string }[]>([]);
   const [carousel, setCarousel] = useState<{ slides: { n: number; role: string; copy: string; alt: string; svg: string }[]; caption: string; hashtags: string[] } | null>(null);
@@ -355,7 +350,7 @@ export default function Page() {
     setFormat(id === "omega-financial" ? "newsletter" : next.formats[0] || "single post");
     setProfession(next.audiences[0] || "");
     setTopic(""); setNotes(""); setWordTarget(""); setResults([]); setPicked({});
-    setDraft(null); setEdited(""); setAudit(null); setCampaign(null); setInterview(null);
+    setDraft(null); setEdited(""); setAudit(null); setCampaign(null);
     setRisk(null); setPlain(null); setVulnerable([]); setPieceId(null); setLearned(null);
     setAngles([]); setAngle(""); setHooks([]); setArc(null); setSeriesOut([]); setCarousel(null);
     setFramework(""); setError(""); setSaved(""); setReviewDeskConnected(false); setView(keepReviewDeskOpen ? "review-desk" : firstChannel);
@@ -389,13 +384,13 @@ export default function Page() {
 
   async function findAngles() {
     if (!topic.trim()) { setError("Give it a topic first."); return; }
-    const j = await post("/api/angles", { brandId, brief: craftBrief(), interviewId: interview?.id }, "angles");
+    const j = await post("/api/angles", { brandId, brief: craftBrief() }, "angles");
     if (j) { setAngles(j.angles || []); setAngle(""); }
   }
 
   async function writeHooks() {
     if (!topic.trim()) { setError("Give it a topic first."); return; }
-    const j = await post("/api/hooks", { brandId, brief: craftBrief(), body: edited, interviewId: interview?.id }, "hooks");
+    const j = await post("/api/hooks", { brandId, brief: craftBrief(), body: edited }, "hooks");
     if (j) setHooks(j.hooks || []);
   }
 
@@ -403,7 +398,6 @@ export default function Page() {
     if (!edited.trim()) { setError("There is nothing to rewrite."); return; }
     const j = await post("/api/rewrite", {
       brandId, brief: craftBrief(), text: edited, transform, instruction: transformNote,
-      interviewId: interview?.id,
     }, "rewrite");
     if (j) {
       setDraft((d) => ({ ...(d || { title: topic, variants: [], claims: [], needs: [], compliance: { disclaimer: "", regulatoryLine: "" }, notes: "" }), ...j.draft }));
@@ -414,7 +408,7 @@ export default function Page() {
   }
 
   async function planSeries(count: number) {
-    const j = await post("/api/series", { brandId, brief: craftBrief(), count, interviewId: interview?.id }, "arc");
+    const j = await post("/api/series", { brandId, brief: craftBrief(), count }, "arc");
     if (j) { setArc({ arc: j.arc, parts: j.parts || [] }); setSeriesOut([]); }
   }
 
@@ -426,7 +420,7 @@ export default function Page() {
       for (const part of arc.parts) {
         const res = await fetch("/api/series", {
           method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ brandId, brief: craftBrief(), part, arc: arc.arc, previous: done, interviewId: interview?.id }),
+          body: JSON.stringify({ brandId, brief: craftBrief(), part, arc: arc.arc, previous: done }),
         });
         const j = await res.json();
         if (!res.ok) throw new Error(j.error);
@@ -441,7 +435,7 @@ export default function Page() {
   async function makeCarousel() {
     if (!topic.trim()) { setError("Give it a topic first."); return; }
     const j = await post("/api/carousel", {
-      brandId, brief: craftBrief(), source: edited || undefined, interviewId: interview?.id,
+      brandId, brief: craftBrief(), source: edited || undefined,
     }, "carousel");
     if (j) setCarousel(j.carousel);
   }
@@ -481,7 +475,6 @@ export default function Page() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           brandId, brief: craftBrief(),
-          interviewId: interview?.id || null,
           sources,
         }),
       });
@@ -622,7 +615,6 @@ export default function Page() {
           campaignId: campaign?.id || null,
           careerStage: stage,
           framework: framework || null,
-          interviewId: interview?.id || null,
           riskScore: risk?.score ?? null,
           status: role === "compliance" ? "approved" : "in_review",
           audit,
@@ -737,18 +729,6 @@ export default function Page() {
         {view === "knowledge" && isOmega && <Knowledge key={brandId} brandId={brandId} audiences={profile.audiences} />}
         {view === "estate" && isOmega && <Estate />}
         {view === "voice" && <VoiceBank key={brandId} brandId={brandId} channels={selectedChannels.map(({ id, name }) => ({ id, name }))} />}
-        {view === "interview" && isOmega && (
-          <Interview
-            onUse={(i) => {
-              setInterview({ id: i.id, advisor: i.advisor, topic: i.topic, profession: i.profession, stage: i.stage });
-              setProfession(i.profession);
-              if (i.stage) setStage(i.stage);
-              setTopic(i.topic);
-              setView("linkedin");
-              setFormat("short");
-            }}
-          />
-        )}
         {view === "campaigns" && (
           <Campaigns
             key={brandId}
@@ -796,17 +776,6 @@ export default function Page() {
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-
-              {interview && (
-                <div className="verdict ready" style={{ marginBottom: 16 }}>
-                  <h3>Built on {interview.advisor}&apos;s interview</h3>
-                  <p>
-                    &ldquo;{interview.topic}&rdquo; — their answers go in ahead of
-                    anything the model would otherwise generate.{" "}
-                    <button className="btn-quiet" onClick={() => setInterview(null)}>Detach</button>
-                  </p>
                 </div>
               )}
 

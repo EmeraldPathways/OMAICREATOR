@@ -34,6 +34,29 @@ test("History belongs to Manage and Image Studio belongs to Connected workspaces
   assert.ok(connected.indexOf("Review Desk") < connected.indexOf("RankScope"));
 });
 
+test("settings owns Voice bank and Advisor interview is no longer a studio destination", async () => {
+  const sidebar = await read("../components/Sidebar.tsx");
+  const page = await read("../app/page.tsx");
+  const referenceStart = sidebar.indexOf('<div className="nav-label">Reference</div>');
+  const settingsStart = sidebar.indexOf('<div className="nav-label">Settings</div>');
+  const connectedStart = sidebar.indexOf('<nav className="sidebar-workspaces"');
+
+  assert.ok(referenceStart >= 0);
+  assert.ok(settingsStart > referenceStart);
+  assert.ok(connectedStart > settingsStart);
+
+  const reference = sidebar.slice(referenceStart, settingsStart);
+  const settings = sidebar.slice(settingsStart, connectedStart);
+  assert.doesNotMatch(sidebar, /Advisor interview|ICONS\.interview|view === "interview"/);
+  assert.doesNotMatch(sidebar, /<div className="nav-label">Craft<\/div>/);
+  assert.doesNotMatch(reference, /Voice bank/);
+  assert.match(settings, /Voice bank/);
+  assert.ok(settings.indexOf("Brand settings") < settings.indexOf("Voice bank"));
+  assert.ok(settings.indexOf("Voice bank") < settings.indexOf("Setup"));
+  assert.match(page, /view === "voice" && <VoiceBank/);
+  assert.doesNotMatch(page, /view === "interview"/);
+});
+
 test("the main view registry names History", async () => {
   const source = await read("../app/page.tsx");
   assert.match(source, /history:\s*["']History["']/);
